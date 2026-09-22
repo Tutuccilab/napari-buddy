@@ -1,0 +1,126 @@
+[project]
+name = "napari-buddy"
+dynamic = ["version"]
+description = "A very basic plugin to use BigFish from napari"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+  {name = "LaToya Vanderbling"},
+  {email = "latoya.vanderbling@gmail.com"},
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Framework :: napari",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+# Capped at <3.11 to match buddy: this plugin depends on buddy, which
+# depends on omnipose, which only works up to Python 3.10.11.
+requires-python = ">=3.9,<3.11"
+dependencies = [
+    "numpy<2",          # match buddy; numpy 2.0 breaks the scientific stack
+    "magicgui",
+    "qtpy",
+    "napari",
+    "scikit-image",
+    "pandas",           # _reader.py / _widget.py
+    "big-fish",         # _widget.py: from bigfish import detection, stack
+    "appdirs",          # _sample_data.py: from appdirs import AppDirs
+    # buddy is the sibling package, installed editable from its own repo -
+    # it is NOT on PyPI, so install buddy FIRST, then this plugin. pip will
+    # then see the requirement already satisfied instead of hitting PyPI.
+    "buddy",
+]
+
+[project.optional-dependencies]
+testing = [
+    "tox",
+    "pytest",  # https://docs.pytest.org/en/latest/contents.html
+    "pytest-cov",  # https://pytest-cov.readthedocs.io/en/latest/
+    "pytest-qt",  # https://pytest-qt.readthedocs.io/en/latest/
+    "napari",
+    "pyqt6",  # was pyqt5 - buddy's env uses pyqt6; mixing the two conflicts
+]
+
+[project.entry-points."napari.manifest"]
+napari-buddy = "napari_buddy:napari.yaml"
+
+[project.urls]
+"Bug Tracker" = "https://github.com/LaToyaVanderB/napari-buddy/issues"
+"Documentation" = "https://github.com/LaToyaVanderB/napari-buddy#README.md"
+"Source Code" = "https://github.com/LaToyaVanderB/napari-buddy"
+"User Support" = "https://github.com/LaToyaVanderB/napari-buddy/issues"
+
+[build-system]
+requires = ["setuptools>=42.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml"]
+
+
+[tool.setuptools.dynamic]
+version = {attr = "napari_buddy.__init__.__version__"}
+
+[tool.black]
+line-length = 79
+target-version = ['py38', 'py39', 'py310']
+
+[tool.ruff]
+line-length = 79
+lint.select = [
+    "E", "F", "W", #flake8
+    "UP", # pyupgrade
+    "I", # isort
+    "BLE", # flake8-blind-exception
+    "B", # flake8-bugbear
+    "A", # flake8-builtins
+    "C4", # flake8-comprehensions
+    "ISC", # flake8-implicit-str-concat
+    "G", # flake8-logging-format
+    "PIE", # flake8-pie
+    "SIM", # flake8-simplify
+]
+lint.ignore = [
+    "E501", # line too long. let black handle this
+    "UP006", "UP007", # type annotation. As using magicgui require runtime type annotation then we disable this.
+    "SIM117", # flake8-simplify - some of merged with statements are not looking great with black, reanble after drop python 3.9
+]
+
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".mypy_cache",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "*vendored*",
+    "*_vendor*",
+]
+
+target-version = "py38"
+fix = true

@@ -1,0 +1,66 @@
+name: napari-buddy
+display_name: Napari Buddy
+# use 'hidden' to remove plugin from napari hub search results
+visibility: hidden
+# see https://napari.org/stable/plugins/technical_references/manifest.html#fields for valid categories
+categories: ["Annotation", "Segmentation", "Acquisition"]
+contributions:
+  commands:
+    - id: napari-buddy.get_reader
+      python_name: napari_buddy._reader:napari_get_reader
+      title: Open data with Napari BigFish
+    - id: napari-buddy.config_widget
+      python_name: napari_buddy._config_widget:config_widget
+      title: Create config file
+    - id: napari-buddy.reassign_buds_widget
+      python_name: napari_buddy._bud_widget:reassign_buds_widget
+      title: Reassign buds to mothers
+    - id: napari-buddy.read_in_vsi_widget
+      python_name: napari_buddy:read_in_vsi_widget
+      title: Read in image
+    - id: napari-buddy.make_background_filtering_magic_widget
+      python_name: napari_buddy:background_filtering_magic_widget
+      title: Make background filtering magic widget
+    - id: napari-buddy.make_spot_detection_magic_widget
+      python_name: napari_buddy:spot_detection_magic_widget
+      title: Make spot detection magic widget
+    - id: napari-buddy.spot_thresholding_magic_widget
+      python_name: napari_buddy:spot_thresholding_magic_widget
+      title: Make spot thresholding magic widget
+    - id: napari-buddy.spot_decomposition_magic_widget
+      python_name: napari_buddy:spot_decomposition_magic_widget
+      title: Make spot decomposition magic widget
+    - id: napari-buddy.make_sample_data
+      python_name: napari_buddy._sample_data:make_sample_data
+      title: Load random sample data
+    - id: napari-buddy.smRNAfish_Ecoli_rpoD_rnlAB_hipBA
+      python_name: napari_buddy._sample_data:smRNAfish_Ecoli_rpoD_rnlAB_hipBA
+      title: Load test data from buddy
+  readers:
+    - command: napari-buddy.get_reader
+      accepts_directories: false
+      filename_patterns: ['*.json']
+  sample_data:
+    - command: napari-buddy.make_sample_data
+      display_name: Example data
+      key: Example data
+    - command: napari-buddy.smRNAfish_Ecoli_rpoD_rnlAB_hipBA
+      display_name: smRNA FISH E.coli rpoD/rnlAB/hipBA
+      key: smRNAfish_Ecoli_rpoD_rnlAB_hipBA
+  widgets:
+    - command: napari-buddy.config_widget
+      display_name: Create config file
+    - command: napari-buddy.read_in_vsi_widget
+      display_name: Read in VSI file
+    - command: napari-buddy.make_background_filtering_magic_widget
+      display_name: Filter out background
+    - command: napari-buddy.make_spot_detection_magic_widget
+      display_name: Detect spot
+    - command: napari-buddy.spot_thresholding_magic_widget
+      display_name: Threshold spots
+    - command: napari-buddy.spot_decomposition_magic_widget
+      display_name: Decompose spots
+    - command: napari-buddy.reassign_buds_widget
+      display_name: Reassign buds to mothers
+
+
