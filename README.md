@@ -7,6 +7,11 @@ filtering → detection → thresholding → decomposition) with live sliders, l
 buddy results (`img.json`) as layers, and correct mother/bud assignments by
 hand.
 
+# Donwload code and example data
+Go to https://doi.org/10.5281/zenodo.22900927 to dowload napari, napari-buddy and some test data. 
+The folder structure of the zipped file should allow you to directly start with the tutorial after installation.
+Note: newer versions of the code can be downloaded by cloning this repo.
+
 ## Installation
 
 `napari-buddy` depends on **buddy** (not on PyPI), so install buddy **first**,
