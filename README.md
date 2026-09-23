@@ -44,17 +44,6 @@ The plugin's widgets appear under **Plugins → Napari Buddy**:
   cell/nucleus masks, fluorescence channels, detected/decomposed spots).
 - **Reassign buds to mothers** — draw lines to link buds to their mother cells.
 
-## Contributing
-
-Contributions are welcome. Run the tests with [pytest]; please keep coverage at
-least the same before submitting a pull request.
-
-## Citation
-
-If you use napari-buddy in your research, please cite it via the archived
-release — see `CITATION.cff` or the Zenodo DOI (add the DOI badge here once
-minted).
-
 ## License
 
 Distributed under the terms of the [BSD-3] license. napari-buddy is free and
@@ -67,4 +56,4 @@ If you encounter a problem, please [file an issue] with a detailed description.
 [napari]: https://github.com/napari/napari
 [pytest]: https://docs.pytest.org/
 [BSD-3]: http://opensource.org/licenses/BSD-3-Clause
-[file an issue]: https://github.com/USERNAME/napari-buddy/issues
+[file an issue]: https://github.com/Tutuccilab/napari-buddy/issues
