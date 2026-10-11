@@ -41,10 +41,9 @@ dependencies = [
 
 [project.optional-dependencies]
 testing = [
-    "tox",
     "pytest",  # https://docs.pytest.org/en/latest/contents.html
-    "pytest-cov",  # https://pytest-cov.readthedocs.io/en/latest/
-    "pytest-qt",  # https://pytest-qt.readthedocs.io/en/latest/
+    "pytest-qt",  # https://pytest-qt.readthedocs.io/en/latest/  (napari's make_napari_viewer fixture)
+    "tifffile",   # the tests read the test field's stacks
     "napari",
     "pyqt6",  # was pyqt5 - buddy's env uses pyqt6; mixing the two conflicts
 ]

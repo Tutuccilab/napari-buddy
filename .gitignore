@@ -36,3 +36,7 @@ Thumbs.db
 *.czi
 *.vsi
 config_local.json
+
+# test data (buddy's field_A): downloaded from buddy's release test-data-v1 by the tests
+napari_buddy/_tests/data/
+pytest.log

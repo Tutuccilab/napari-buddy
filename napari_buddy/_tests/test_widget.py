@@ -1,133 +1,109 @@
-import pytest
+"""
+The spot-tuning panels (Filter out background, Detect spot, Threshold spots, Decompose spots) on a channel of the
+test field: they must give the same result as buddy's pipeline functions, so that the settings you tune in napari
+mean the same in the pipeline. Uses the ASH1CLB2 channel of field_A (41 x 512 x 512).
+"""
+import json
 
 import numpy as np
-import pandas as pd
-from skimage import io
-from pathlib import Path
+import pytest
+import tifffile
 
 from napari_buddy._widget import (
-    read_in_vsi_widget,
     background_filtering_magic_widget,
+    spot_decomposition_magic_widget,
     spot_detection_magic_widget,
     spot_thresholding_magic_widget,
-    spot_decomposition_magic_widget,
 )
 
-@pytest.fixture
-def dic_masks():
-    return io.imread('napari_buddy/_tests/data/exp16/expected/DIC masks.tif')
-
-@pytest.fixture
-def rna():
-    return io.imread('napari_buddy/_tests/data/exp16/expected/rpoD.tif')
-
-@pytest.fixture
-def rna_background_filtered():
-    return io.imread('napari_buddy/_tests/data/exp16/expected/rpoD background filtered.tif')
-
-@pytest.fixture
-def rna_LoG_filtered():
-    return io.imread('napari_buddy/_tests/data/exp16/expected/rpoD LoG filtered.tif')
-
-@pytest.fixture
-def rna_local_maxima():
-    return io.imread('napari_buddy/_tests/data/exp16/expected/rpoD local maxima.tif')
-
-@pytest.fixture
-def rna_LoG_local_maxima():
-    return io.imread('napari_buddy/_tests/data/exp16/expected/rpoD LoG[local maxima].tif')
-
-@pytest.fixture
-def spots_detected_50():
-    return pd.read_csv('napari_buddy/_tests/data/exp16/expected/rpoD spots detected thr=50.csv').drop('index', axis=1).rename(columns={'axis-0': 0, 'axis-1': 1, 'axis-2': 2})
-
-@pytest.fixture
-def spots_thresholded_100():
-    return pd.read_csv('napari_buddy/_tests/data/exp16/expected/rpoD spots thresholded thr=100.csv').drop('index', axis=1).rename(columns={'axis-0': 0, 'axis-1': 1, 'axis-2': 2})
-
-@pytest.fixture
-def spots_decomposed_50():
-    return pd.read_csv('napari_buddy/_tests/data/exp16/expected/rpoD spots decomposed thr=50.csv').drop('index', axis=1).rename(
-        columns={'axis-0': 0, 'axis-1': 1, 'axis-2': 2})
+CHANNEL = "ASH1CLB2"
 
 
-scale = (200, 65, 65)
-spot_radius = (800, 120, 120)
+def _detection():
+    try:
+        from buddy.spots import detection           # buddy >= 0.2.0
+    except ImportError:
+        pytest.skip("needs buddy >= 0.2.0 (buddy.spots.detection)")
+    return detection
 
 
-def test_read_in_vsi_widget(make_napari_viewer):
+@pytest.fixture(scope="module")
+def settings(field_a):
+    p = json.loads((field_a / "config.json").read_text())["parameters"]
+    return {"sigma": tuple(p["sigma"]), "scale": tuple(p["scale"]), "spot_radius": tuple(p["spot_radius"])}
+
+
+@pytest.fixture(scope="module")
+def stack(field_a):
+    return tifffile.imread(field_a / f"{CHANNEL}.tif")
+
+
+@pytest.fixture(scope="module")
+def filtered(stack, settings):
+    """buddy's background filter on the whole stack"""
+    detection = _detection()
+    out, _ = detection.filter_background(stack, settings["sigma"], 0, stack.shape[0])
+    return out
+
+
+def _detect(viewer, filtered, settings, threshold):
+    layer = viewer.add_image(filtered, name=f"{CHANNEL} background filtered", metadata={"channel": CHANNEL})
+    scale, radius = settings["scale"], settings["spot_radius"]
+    return spot_detection_magic_widget()(viewer=viewer, img_layer=layer, threshold=threshold, scale_z=scale[0],
+                                         scale_yx=scale[1], spot_radius_z=radius[0], spot_radius_yx=radius[1])
+
+
+def _coordinates(spots):
+    spots = np.asarray(spots)[:, :3].astype(int)
+    return spots[np.lexsort(spots.T[::-1])]
+
+
+def test_background_filter_panel_equals_pipeline(make_napari_viewer, stack, filtered, settings):
     viewer = make_napari_viewer()
-    my_widget = read_in_vsi_widget()
-    base_dir = "napari_buddy/_tests/data/exp16"
-    cfg_file = Path(base_dir) / "config.json"
-    vsi_file = "MG1655_GLU_OD_0.3_left_CY5, CY3.5 NAR, CY3, DAPI_02.vsi"
-    cell_file = "MG1655_GLU_OD_0.3_left_DIC_02.tif"
-    result = my_widget(cfg_file=cfg_file, vsi_file=vsi_file, cell_file=cell_file)
-    assert len(result) == 5
+    layer = viewer.add_image(stack, name=CHANNEL)
+    data, kwargs, kind = background_filtering_magic_widget()(img_layer=layer, sigma_z=settings["sigma"][0],
+                                                              sigma_yx=settings["sigma"][1])
+    assert kind == "image" and kwargs["name"] == f"{CHANNEL} background filtered"
+    assert np.abs(data.astype(np.int64) - filtered.astype(np.int64)).max() <= 1      # GPU vs CPU: rounding only
 
 
-def test_background_filtering_magic_widget(make_napari_viewer, rna, rna_background_filtered):
+def test_spot_detection_panel_equals_pipeline(make_napari_viewer, stack, filtered, settings):
+    detection = _detection()
     viewer = make_napari_viewer()
-    layer = viewer.add_image(rna)
+    (log, _, _), (mask, _, _), (spots, spot_kwargs, kind) = _detect(viewer, filtered, settings, threshold=50)
+    assert kind == "points" and len(spots) > 0
+    pipeline_spots, _, _ = detection.detect_spots(stack, filtered, 0, stack.shape[0], 50, settings["scale"],
+                                                  settings["spot_radius"])
+    # the pipeline leaves out spots in the lowest slices (DROP_BOTTOM_SLICES); the panel shows all
+    shown = _coordinates(spots)
+    shown = shown[shown[:, 0] > detection.DROP_BOTTOM_SLICES]
+    assert np.array_equal(shown, _coordinates(pipeline_spots))
 
-    my_widget = background_filtering_magic_widget()
-    result = my_widget(img_layer=layer, sigma_z=0.75, sigma_yx=2.3)
-    assert np.all(result[0] - rna_background_filtered == 0)
 
-
-def test_spot_detection_magic_widget(make_napari_viewer, dic_masks, rna_background_filtered, rna_LoG_filtered, rna_local_maxima, spots_detected_50):
+def test_thresholding_panel_equals_detecting_at_that_threshold(make_napari_viewer, filtered, settings):
+    """re-thresholding the detected spots at 100 gives the same spots as detecting at 100 directly"""
     viewer = make_napari_viewer()
-    layer = viewer.add_image(rna_background_filtered)
-    layer.metadata['channel'] = 'rpoD'
-    layer.metadata.update({
-        'threshold': 50,
-    })
-    viewer.add_image(dic_masks, name='DIC masks')
-
-    my_widget = spot_detection_magic_widget()
-    result = my_widget(img_layer=layer, threshold=50, scale_z=200, scale_yx=65, spot_radius_z=800, spot_radius_yx=120)
-
-    assert np.all(result[0][0] - rna_LoG_filtered == 0)
-    assert np.all(result[1][0] - rna_local_maxima == 0)
-    test_spots = pd.concat([pd.DataFrame(result[2][0]), result[2][1]['features']], axis=1)
-    assert test_spots.equals(spots_detected_50)
+    (log, _, _), (mask, _, _), (spots50, kwargs50, _) = _detect(viewer, filtered, settings, threshold=50)
+    viewer.add_image(log, name=f"{CHANNEL} LoG filtered")
+    viewer.add_labels(mask.astype(np.uint8), name=f"{CHANNEL} local maxima")
+    points = viewer.add_points(spots50, metadata=dict(kwargs50["metadata"]))
+    rethresholded, _, _ = spot_thresholding_magic_widget()(viewer=viewer, img_layer=points, threshold=100)
+    _, _, (spots100, _, _) = _detect(make_napari_viewer(), filtered, settings, threshold=100)
+    assert 0 < len(rethresholded) < len(spots50)
+    assert np.array_equal(_coordinates(rethresholded), _coordinates(spots100))
 
 
-def test_spot_thresholding_magic_widget(make_napari_viewer, dic_masks, rna_LoG_filtered, rna_local_maxima, spots_detected_50, spots_thresholded_100):
+def test_decomposition_panel_equals_pipeline(make_napari_viewer, stack, filtered, settings):
+    """same number of decomposed spots and dense regions as buddy (positions inside a region are partly random)"""
+    detection = _detection()
     viewer = make_napari_viewer()
-    layer = viewer.add_points(spots_detected_50.iloc[:, 0:3])
-    layer.features = spots_detected_50.iloc[:, 3:]
-    layer.metadata['channel'] = 'rpoD'
-    viewer.add_image(rna_LoG_filtered, name='rpoD LoG filtered')
-    viewer.add_image(rna_local_maxima, name='rpoD local maxima')
-    viewer.add_image(dic_masks, name='DIC masks')
-
-    my_widget = spot_thresholding_magic_widget()
-
-    same_spots, props, _ = my_widget(viewer=viewer, img_layer=viewer.layers[0], threshold=50)
-    test_spots = pd.concat([pd.DataFrame(same_spots), props['features']], axis=1)
-    assert test_spots.equals(spots_detected_50)
-
-    fewer_spots, props, _ = my_widget(img_layer=layer, threshold=100)
-    test_spots = pd.concat([pd.DataFrame(fewer_spots), props['features']], axis=1)
-    assert test_spots.equals(spots_thresholded_100)
-
-
-def test_spot_decomposition_magic_widget(make_napari_viewer, dic_masks, rna, spots_detected_50, spots_decomposed_50):
-    viewer = make_napari_viewer()
-    layer = viewer.add_points(spots_detected_50.iloc[:, 0:3])
-    layer.metadata['channel'] = 'rpoD'
-    layer.metadata['threshold'] = 50
-    layer.metadata['scale'] = scale
-    layer.metadata['spot_radius'] = spot_radius
-
-    viewer.add_image(dic_masks, name='DIC masks')
-    viewer.add_image(rna, name='rpoD')
-
-    my_widget = spot_decomposition_magic_widget()
-    result = my_widget(viewer=viewer, point_layer=layer)
-
-    test_spots = pd.concat([ pd.DataFrame(result[1][0]), result[1][1]['features']], axis=1)
-    # assert test_spots.equals(spots_decomposed_50)    # etc.
-    assert abs(test_spots.shape[0] - spots_decomposed_50.shape[0]) / spots_decomposed_50.shape[0] < 0.1
-    assert test_spots.shape[0] > spots_detected_50.shape[0]
+    viewer.add_image(stack, name=CHANNEL)
+    _, _, (spots, kwargs, _) = _detect(viewer, filtered, settings, threshold=50)
+    points = viewer.add_points(spots, metadata=dict(kwargs["metadata"]))
+    result = spot_decomposition_magic_widget()(viewer=viewer, point_layer=points)
+    dense_regions, decomposed = result[0][0], result[1][0]
+    pipeline_decomposed, pipeline_dense, _, _ = detection.decompose_spots(stack, spots, settings["scale"],
+                                                                          settings["spot_radius"])
+    assert len(decomposed) == len(pipeline_decomposed)
+    assert len(dense_regions) == len(pipeline_dense)
+    assert len(decomposed) >= len(spots)

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (tests only, no code change)
+- Tests rewritten on buddy's test field (reader; spot-tuning panels give the same result as buddy's pipeline);
+  GitHub workflow on Linux and Windows. Removed the template leftovers (`test_writer.py`, `tox.ini`).
+
 ## 0.1.1 (2026-10-11)
 - Works with buddy 0.2.0 (its modules moved into sub-packages: `buddy.spots.gpu`, `buddy.buds.bud_tools`) as well as 0.1.0.
 - Warns at import when the installed buddy is older than 0.1.0 or newer than 0.2.x.
