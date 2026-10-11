@@ -28,13 +28,24 @@ jobs:
       - name: Install PyTorch (CPU build)
         run: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
       - name: Install buddy from GitHub (not on PyPI)
-        run: pip install "buddy @ git+https://github.com/Tutuccilab/buddy.git"
+        # buddy is a private repository: the workflow's own token cannot read it, so a token with read access to
+        # buddy is stored as the secret BUDDY_TOKEN (Settings -> Secrets and variables -> Actions). Without the
+        # secret (e.g. once buddy is public) it installs without one.
+        shell: bash
+        env:
+          BUDDY_TOKEN: ${{ secrets.BUDDY_TOKEN }}
+        run: |
+          if [ -n "$BUDDY_TOKEN" ]; then
+            pip install "buddy @ git+https://x-access-token:${BUDDY_TOKEN}@github.com/Tutuccilab/buddy.git"
+          else
+            pip install "buddy @ git+https://github.com/Tutuccilab/buddy.git"
+          fi
       - name: Install napari-buddy
         run: pip install -e ".[testing]"
       - name: Download buddy's test field
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.BUDDY_TOKEN || github.token }}
         run: |
           gh release download test-data-v1 --repo Tutuccilab/buddy --pattern field_A.zip --dir "$RUNNER_TEMP" --clobber
           mkdir -p napari_buddy/_tests/data
