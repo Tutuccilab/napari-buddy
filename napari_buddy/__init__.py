@@ -1,4 +1,32 @@
-__version__ = "0.1.0"
+__version__ = "0.1.1"
+
+# buddy versions this plugin works with: from MIN_BUDDY up to and including the MAX_BUDDY minor version
+MIN_BUDDY = (0, 1, 0)
+MAX_BUDDY = (0, 2)
+
+
+def _check_buddy():
+    """Warn (once, at import) when the installed buddy is older or newer than this napari-buddy supports."""
+    import re
+    import warnings
+    from importlib.metadata import PackageNotFoundError, version
+    try:
+        installed = version("buddy")
+    except PackageNotFoundError:
+        return                                  # buddy missing: the plugin's own imports say so
+    v = tuple(int(x) for x in re.findall(r"\d+", installed)[:3])
+    if v < MIN_BUDDY:
+        warnings.warn(f"buddy {installed} is too old for napari-buddy {__version__}: update buddy to "
+                      f"{'.'.join(map(str, MIN_BUDDY))} or newer", stacklevel=2)
+    elif v[:2] > MAX_BUDDY:
+        warnings.warn(f"buddy {installed} is newer than napari-buddy {__version__} knows (up to "
+                      f"{'.'.join(map(str, MAX_BUDDY))}.x): update napari-buddy", stacklevel=2)
+
+
+try:
+    _check_buddy()
+except Exception:      # a version check must never stop the plugin from loading
+    pass
 
 # Light modules: safe to import eagerly (no torch / no Java / no buddy).
 from ._reader import napari_get_reader

@@ -164,10 +164,20 @@ def _update_shapes(layer, data, kw):
     layer.metadata = kw.get('metadata', {})
 
 
+def _bud_tools():
+    """buddy's mask tools for buds (buddy.buds.bud_tools; buddy.bud_tools in buddy 0.1.0)."""
+    try:
+        from buddy.buds import bud_tools          # buddy >= 0.2.0
+    except ImportError:
+        from buddy import bud_tools               # buddy 0.1.0
+    return bud_tools
+
+
 def _seed_bud_layer(viewer, savepath):
     """No bud model output: pre-mark small cells as buds and circle non-round cells (as before)."""
     from skimage import io
-    from buddy.bud_tools import classify_cells, build_bud_seed, candidate_rectangles
+    bt = _bud_tools()
+    classify_cells, build_bud_seed, candidate_rectangles = bt.classify_cells, bt.build_bud_seed, bt.candidate_rectangles
     cell_masks = np.asarray(viewer.layers['DIC masks'].data)
     info = classify_cells(cell_masks, bud_area_fraction=0.5, min_solidity=0.93, max_round_eccentricity=0.85)
     bud_file = savepath / 'corrected' / 'bud_corrected_masks.tif'
@@ -307,7 +317,8 @@ def save_corrections(viewer, my_image):
 def _save(viewer, my_image):
     """save_corrections without printing; returns the summary."""
     from skimage import io
-    from buddy.bud_tools import assign_buds_to_mothers, merge_buds_into_mothers
+    bt = _bud_tools()
+    assign_buds_to_mothers, merge_buds_into_mothers = bt.assign_buds_to_mothers, bt.merge_buds_into_mothers
     from ._bud_links import update_links
     from ._bud_widget import apply_drawn_lines, LINKS_LAYER
 

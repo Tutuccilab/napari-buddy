@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 (2026-10-11)
+- Works with buddy 0.2.0 (its modules moved into sub-packages: `buddy.spots.gpu`, `buddy.buds.bud_tools`) as well as 0.1.0.
+- Warns at import when the installed buddy is older than 0.1.0 or newer than 0.2.x.
+
 ## 0.1.0 (2026-10-09)
 - New **buddy pipeline** panel: steps 1-5 of the buddy bulk-processing notebook with buttons (background
   run, progress bar, time estimate, "Stop after this image", yes/no question before overwriting).
