@@ -82,13 +82,86 @@ def reader_function(path):
     pass
     return layer_tuples
 
-def read_smfish_json(path):
-    import json
-    import numpy as np
-    import pandas as pd
-    from pathlib import Path
-    from skimage import io
+# Layer groups (see _layer_groups.py). The reader adds the layers group by group, from the bottom
+# of napari's layer list to the top, so the layers of a group sit together.
+GROUP_ORDER = ["images", "raw", "filtered", "spots", "masks"]
+FLAG_COLOURS = {"close call": "red", "bud without mother": "orange",
+                "weak pair": "yellow", "possible missed bud": "yellow",
+                # cell_flags.csv (buddy/cell_flags.py): unbudded cells with high ASH1/CLB2
+                "late-M pair?": "magenta", "high ASH1/CLB2, no bud": "lime"}
 
+
+def bud_layer_data(base, cell_mask=None):
+    """
+    Layer data tuples for the bud results in an image folder (all in the 'masks' group):
+      bud masks           corrected/bud_corrected_masks.tif (1 = bud, 2 = background, 3 = mother)
+      bud -> mother links a line from each bud to its mother (see _bud_links.py)
+      check these buds    boxes around the cells the bud model was unsure about (bud_flags.csv) and the
+                          unbudded cells with high ASH1/CLB2 (cell_flags.csv: late M / early S)
+    Missing files are skipped.
+    """
+    from ._bud_links import links_layer_data
+    base = Path(base)
+    tuples = []
+    bud_file = base / 'corrected' / 'bud_corrected_masks.tif'
+    if bud_file.exists():
+        bud_masks = io.imread(bud_file)
+        tuples.append((bud_masks, {'name': 'bud masks', 'opacity': 0.5, 'visible': True,
+                                   'metadata': {'group': 'masks'}}, 'labels'))
+        if cell_mask is not None:
+            tuples.append(links_layer_data(cell_mask, bud_masks))
+    tables = [pd.read_csv(f) for f in (base / 'bud_flags.csv', base / 'cell_flags.csv') if f.exists()]
+    tables = [t for t in tables if len(t)]
+    if tables:
+        flags = pd.concat(tables, ignore_index=True)
+        if len(flags):
+            # square markers (a points layer, not shapes: napari shows a points layer's features when the
+            # mouse is over a marker, so the flag and reason appear only on hover)
+            centres = np.c_[(flags['y0'] + flags['y1']) / 2, (flags['x0'] + flags['x1']) / 2]
+            sizes = np.maximum(flags['y1'] - flags['y0'], flags['x1'] - flags['x0']) + 10
+            tuples.append((centres, {
+                'name': 'check these buds', 'symbol': 'square', 'size': sizes.to_numpy(),
+                'face_color': 'transparent', 'border_width': 4, 'border_width_is_relative': False,
+                'border_color': [FLAG_COLOURS.get(f, 'white') for f in flags['flag']],
+                'features': flags[['flag', 'reason', 'label']].reset_index(drop=True),
+                'metadata': {'group': 'masks'}}, 'points'))
+    return tuples
+
+
+def max_projection(stack_file):
+    """
+    2D maximum projection of a z-stack file, from projections/<name>_max.tif (written by buddy, or made
+    here the first time and saved for next time). Remade when the stack is newer than the saved projection.
+    Reading these small files instead of the full stacks makes opening an image much faster.
+    """
+    stack_file = Path(stack_file)
+    cache = stack_file.parent / 'projections' / f'{stack_file.stem}_max.tif'
+    if cache.exists() and cache.stat().st_mtime >= stack_file.stat().st_mtime:
+        return io.imread(cache)
+    data = io.imread(stack_file)
+    if data.ndim != 3:
+        return data
+    projection = data.max(axis=0)
+    try:
+        cache.parent.mkdir(exist_ok=True)
+        io.imsave(cache, projection, check_contrast=False)
+    except OSError:                       # read-only folder: just do not save it
+        pass
+    return projection
+
+
+def read_smfish_json(path, max_project=False):
+    """
+    All layers of one image (from its img.json), grouped and ordered (bottom to top):
+      images    DIC, DAPI                                   (visible)
+      raw       {channel}                                   (hidden)
+      filtered  {channel} background filtered               (visible)
+      spots     detected + decomposed spots per channel     (visible)
+      masks     DIC masks (visible), DAPI masks (hidden), bud masks, bud -> mother links, check these buds
+    Every layer gets metadata['group'] (and metadata['channel'] for channel layers), used by the
+    Layer groups widget to show / hide whole groups.
+    max_project=True: z-stacks are loaded as 2D maximum projections (from projections/, see max_projection).
+    """
     # Choose the best available version of a layer. Masks prefer the manually
     # corrected copy, then the aligned copy, then the raw segmentation. The DIC
     # image prefers its aligned copy. Returns the first candidate that exists
@@ -106,18 +179,15 @@ def read_smfish_json(path):
     cell_mask = io.imread(_mp) if _mp.exists() else None
 
     layer_list = [
-        # Static layers
-        { 'file': _prefer('aligned_DIC.tif', 'DIC.tif'), 'layer_type': "image",
+        { 'file': _prefer('aligned_DIC.tif', 'DIC.tif'), 'layer_type': "image", 'group': 'images',
           'add_kwargs': { 'name': "DIC", 'colormap': 'grey', 'visible': True, 'blending': 'additive' } },
-        { 'file': dic_mask_file, 'layer_type': 'labels',
-          'add_kwargs': { 'name': "DIC masks", 'visible': False, 'blending': 'additive', 'opacity': 0.2 } },
-        { 'file': 'DAPI.tif', 'layer_type': "image",
+        { 'file': 'DAPI.tif', 'layer_type': "image", 'group': 'images',
           'add_kwargs': { 'name': "DAPI", 'colormap': 'blue', 'visible': True, 'blending': 'additive' } },
-        { 'file': _prefer('corrected/DAPI_corrected_masks.tif', 'DAPI_masks.tif'), 'layer_type': 'labels',
+        { 'file': dic_mask_file, 'layer_type': 'labels', 'group': 'masks',
+          'add_kwargs': { 'name': "DIC masks", 'visible': True, 'blending': 'additive', 'opacity': 0.2 } },
+        { 'file': _prefer('corrected/DAPI_corrected_masks.tif', 'DAPI_masks.tif'), 'layer_type': 'labels', 'group': 'masks',
           'add_kwargs': { 'name': "DAPI masks", 'visible': False, 'blending': 'additive', 'opacity': 0.2 } },
     ]
-
-    layer_tuples = []
 
     with open(path, "r") as f:
         img = json.load(f)
@@ -133,41 +203,39 @@ def read_smfish_json(path):
             metadata.update({'threshold': threshold})
 
             layer_list.extend([
-                { 'file': f'{ch}.tif', 'layer_type': "image",
+                { 'file': f'{ch}.tif', 'layer_type': "image", 'group': 'raw',
                   'add_kwargs': { 'name': f'{ch}', 'metadata': metadata,
                                   'colormap': colors.get(ch, 'gray'), 'visible': False } },
-                { 'file': f'{ch}_filtered.tif', 'layer_type': "image",
+                { 'file': f'{ch}_filtered.tif', 'layer_type': "image", 'group': 'filtered',
                   'add_kwargs': { 'name': f'{ch} background filtered', 'metadata': metadata,
                                   'colormap': colors.get(ch, 'gray'), 'visible': True } },
-                { 'file': f'{ch}_spots.npy', 'layer_type': "points",
+                { 'file': f'{ch}_spots.npy', 'layer_type': "points", 'group': 'spots',
                   'add_kwargs': { 'name': f'{ch} spots detected thr={threshold}', 'metadata': metadata,
                                   'symbol': 'disc', 'size': 10, 'opacity': 0.5, 'face_color': 'transparent',
                                   'border_color': 'label' } },
-                { 'file': f'{ch}_decomposed_spots.npy', 'layer_type': "points",
+                { 'file': f'{ch}_decomposed_spots.npy', 'layer_type': "points", 'group': 'spots',
                   'add_kwargs': { 'name': f'{ch} decomposed spots', 'metadata': metadata,
                                   'symbol': 'disc', 'size': 10, 'opacity': 0.5, 'face_color': 'transparent',
                                   'border_color': colors.get(ch, 'gray') } }
             ])
 
+    tuples_by_group = {g: [] for g in GROUP_ORDER}
     for l in layer_list:
         file = Path(path).parent / l['file']
         if not file.exists():
             continue
 
         if file.suffix == '.tif':
-            data = io.imread(file)
+            if l['file'] == dic_mask_file and cell_mask is not None:
+                data = cell_mask                          # already read above (for the spot colours)
+            elif max_project and l['layer_type'] == 'image':
+                data = max_projection(file)
+            else:
+                data = io.imread(file)
         elif file.suffix == '.npy':
             data = np.load(file)
             if l['layer_type'] == "points" and "spots" in l['file']:
-
-                # Old code 
-                #    features = pd.DataFrame(data, columns=['z', 'y', 'x', 'intensity', 'filtered_intensity', 'label'])
-                #    data = data[:, :3]
-                #    l['add_kwargs']['features'] = features
-
-                # Define column names
                 n_cols = data.shape[-1]
-
                 if n_cols == 3:
                     columns = ['z', 'y', 'x']
                 elif n_cols == 5:
@@ -200,6 +268,9 @@ def read_smfish_json(path):
         else:
             continue
 
-        layer_tuples.append((data, l['add_kwargs'], l['layer_type']))
+        kwargs = dict(l['add_kwargs'])
+        kwargs['metadata'] = {**kwargs.get('metadata', {}), 'group': l['group']}   # own copy per layer
+        tuples_by_group[l['group']].append((data, kwargs, l['layer_type']))
 
-    return layer_tuples
+    tuples_by_group['masks'].extend(bud_layer_data(_base, cell_mask))
+    return [t for g in GROUP_ORDER for t in tuples_by_group[g]]

@@ -3,17 +3,19 @@ napari widget: reassign / create bud <-> mother links by drawing lines.
 
 Workflow
 --------
-1. Click "New line layer" - adds a 'bud <-> mother links' Shapes layer in
+1. Click "New line layer" - adds a 'draw bud <-> mother lines' Shapes layer in
    line-drawing mode.
 2. Draw a short line between a bud and its mother (either direction):
-     * bud already segmented as its own DIC cell -> that cell is merged into the
-       mother;
-     * bud missing from the DIC segmentation -> first paint it in the 'bud masks'
-       layer (label 1), then draw a line from the painted bud to a nearby DIC
-       cell: the painted region is added to that cell.
+     * bud missing from the DIC segmentation -> first paint it in the 'bud masks' layer (label 1), then
+       draw the line from the painted bud to its mother. The end on the painted bud is the bud, so it
+       does not matter if the paint overlaps the mother's edge. Painted pixels outside any cell are added
+       to the mother; other cells under the paint are not changed.
+     * bud segmented as its own DIC cell -> that cell is merged into the mother (painted or not).
 3. Click "Apply links". The chosen Labels layer is edited in place, the
-   'potential buds' and 'mother-bud pairs' rectangles are redrawn, and the
-   processed lines are cleared.
+   'bud -> mother links' layer (a line from each bud to its mother) and, if shown,
+   the 'potential buds' rectangles are redrawn, and the processed lines are cleared.
+   Pressing "Apply links" without drawn lines just redraws the links (e.g. after painting); saving in
+   the Correct images panel also applies lines you drew but did not apply yet.
 
 Light module (numpy + skimage + magicgui; napari imported lazily).
 """
@@ -23,13 +25,13 @@ from magicgui.widgets import Container, PushButton, Label, LineEdit
 
 CELL_LAYER_DEFAULT = "DIC masks"
 BUD_LAYER_DEFAULT = "bud masks"
-LINKS_LAYER = "bud <-> mother links"
+LINKS_LAYER = "draw bud <-> mother lines"   # lines you draw (the result is shown in "bud \u2192 mother links")
 BUD_VALUE = 1
 
 
 def _at(arr, point):
-    """Label value at a (y, x) point, or 0 if out of bounds."""
-    y, x = int(round(float(point[0]))), int(round(float(point[1])))
+    """Label value at a point (the last two coordinates are y, x; also works in the 3D view), or 0 if outside."""
+    y, x = int(round(float(point[-2]))), int(round(float(point[-1])))
     if 0 <= y < arr.shape[0] and 0 <= x < arr.shape[1]:
         return int(arr[y, x])
     return 0
@@ -45,52 +47,105 @@ def _layer(viewer, name):
 
 
 def _refresh_overlays(viewer, dic, bud_masks, bud_area_fraction=0.5):
-    """Redraw the 'potential buds' (small cells) and 'mother-bud pairs' rectangles.
+    """Redraw the 'bud -> mother links' layer, and the 'potential buds' rectangles if that layer is shown.
 
-    'potential buds' are recomputed fresh each time (they're just suggestions).
-    'mother-bud pairs' are *kept*: any rectangles already on that layer are read
-    back in and the newly computed pairs are added to them (exact duplicates
-    dropped), so earlier pairs are never overwritten.
+    'potential buds' (cells small relative to the median) are suggestions for annotating by hand; they
+    are only redrawn when that layer already exists (not after automatic bud classification).
     """
-    # potential buds = cells small relative to the median
-    props = regionprops(dic)
-    areas = np.array([p.area for p in props], dtype=float)
-    median = float(np.median(areas)) if areas.size else 0.0
-    thr = bud_area_fraction * median
-    bud_rects = [_bbox_rect(p.bbox) for p in props if p.area < thr]
+    from ._bud_links import update_links
+    if "potential buds" in viewer.layers:
+        props = regionprops(dic)
+        areas = np.array([p.area for p in props], dtype=float)
+        thr = bud_area_fraction * (float(np.median(areas)) if areas.size else 0.0)
+        bud_rects = [_bbox_rect(p.bbox) for p in props if p.area < thr]
+        layer = viewer.layers["potential buds"]
+        layer.data = bud_rects if bud_rects else []
+    if "mother-bud pairs" in viewer.layers:             # replaced by the links layer
+        viewer.layers.remove(viewer.layers["mother-bud pairs"])
+    return update_links(viewer)
 
-    # existing pair rectangles (read them in before we redraw the layer)
-    pair_rects = []
-    if "mother-bud pairs" in viewer.layers:
-        pair_rects = [np.asarray(s) for s in viewer.layers["mother-bud pairs"].data]
 
-    # newly computed pairs = each bud annotation -> the DIC cell under it, boxed
-    if bud_masks is not None:
-        bud_cc = cc_label(bud_masks == BUD_VALUE, connectivity=2)
-        seen = set()
-        for comp in range(1, int(bud_cc.max()) + 1):
-            under = dic[bud_cc == comp]
-            under = under[under > 0]
-            if under.size == 0:
-                continue
-            mother = int(np.bincount(under).argmax())
-            if mother in seen:
-                continue
-            seen.add(mother)
-            ys, xs = np.where(dic == mother)
-            rect = _bbox_rect((ys.min(), xs.min(), ys.max() + 1, xs.max() + 1))
-            if not any(rect.shape == e.shape and np.array_equal(rect, e) for e in pair_rects):
-                pair_rects.append(rect)
+def apply_drawn_lines(viewer, cell_layer=CELL_LAYER_DEFAULT, bud_layer=BUD_LAYER_DEFAULT):
+    """
+    Apply the lines drawn in the 'draw bud <-> mother lines' layer to the cell masks (see the module
+    docstring), clear the lines and redraw the bud -> mother links. Returns a short summary.
+    Without drawn lines it only redraws the links.
+    """
+    from ._bud_links import update_links
+    cells = _layer(viewer, cell_layer)
+    if cells is None or not hasattr(cells, "data"):
+        return f"No labels layer named '{cell_layer}'."
+    links = _layer(viewer, LINKS_LAYER)
+    if links is None or len(links.data) == 0:
+        pairs, orphans = update_links(viewer, cell_layer, bud_layer)
+        return f"No lines drawn. {pairs} bud(s) linked to a mother, {orphans} without mother."
 
-    for name in ("potential buds", "mother-bud pairs"):
-        if name in viewer.layers:
-            viewer.layers.remove(viewer.layers[name])
-    if bud_rects:
-        viewer.add_shapes(bud_rects, name="potential buds", shape_type="rectangle",
-                          edge_color="yellow", edge_width=6, face_color="transparent")
-    if pair_rects:
-        viewer.add_shapes(pair_rects, name="mother-bud pairs", shape_type="rectangle",
-                          edge_color="magenta", edge_width=6, face_color="transparent")
+    dic = np.asarray(cells.data)
+    buds_layer = _layer(viewer, bud_layer)
+    bud_masks = np.asarray(buds_layer.data).copy() if buds_layer is not None else None
+    bud_cc = cc_label(bud_masks == BUD_VALUE, connectivity=2) if bud_masks is not None else None
+
+    merged = created = linked_before = 0
+    problems = []
+    for n, line in enumerate(links.data, start=1):
+        ends = (line[0], line[-1])
+        on_bud = [(_at(bud_cc, p) if bud_cc is not None else 0) for p in ends]
+        on_cell = [_at(dic, p) for p in ends]
+
+        if (on_bud[0] > 0) != (on_bud[1] > 0):
+            # one end on a painted bud (the bud), the other end on the mother
+            k = 0 if on_bud[0] > 0 else 1
+            mother = on_cell[1 - k]
+            if mother == 0:
+                problems.append(f"line {n}: the mother end is not on a cell"); continue
+            region = bud_cc == on_bud[k]
+            changed = False
+            # the bud's own cell (the cell at the bud end of the line, and any cell lying mostly under
+            # the painted bud) is merged into the mother
+            labels, counts = np.unique(dic[region], return_counts=True)
+            own = {lab for lab, cnt in zip(labels, counts) if cnt > 0.5 * (dic == lab).sum()} | {on_cell[k]}
+            for lab in own - {0, mother}:
+                dic[dic == lab] = mother; changed = True
+            # painted pixels outside any cell become part of the mother (other cells are never touched)
+            empty = region & (dic == 0)
+            if empty.any():
+                dic[empty] = mother; changed = True
+            # paint that spilled onto other cells is not part of this bud: give it back to those cells
+            if bud_masks is not None:
+                for lab in np.unique(dic[region]):
+                    if lab not in (0, mother):
+                        spill = region & (dic == lab)
+                        bud_masks[spill] = 3 if (bud_masks[(dic == lab) & ~region] == 3).any() else 2
+            if changed:
+                created += 1
+            else:
+                linked_before += 1
+        elif on_bud[0] == 0 and on_bud[1] == 0 and on_cell[0] > 0 and on_cell[1] > 0 and on_cell[0] != on_cell[1]:
+            # both ends on cells, no painted bud: the smaller cell is the bud, merged into the larger
+            a, b = on_cell
+            bud, mother = (a, b) if (dic == a).sum() <= (dic == b).sum() else (b, a)
+            region = dic == bud
+            dic[region] = mother
+            if bud_masks is not None:
+                bud_masks[region] = BUD_VALUE      # bud stays a bud
+            merged += 1
+        elif on_bud[0] > 0 and on_bud[1] > 0:
+            problems.append(f"line {n}: both ends are on a painted bud - end one line on the mother")
+        else:
+            problems.append(f"line {n}: needs one end on the bud (painted, or its own cell) and one on the mother")
+
+    cells.data = dic
+    cells.refresh()
+    if buds_layer is not None:
+        buds_layer.data = bud_masks
+        buds_layer.refresh()
+    links.data = []
+    pairs, orphans = _refresh_overlays(viewer, dic, bud_masks)
+    return (f"Merged {merged} cell(s), added {created} painted bud(s)"
+                    + (f", {linked_before} already linked" if linked_before else "")
+                    + f". {pairs} bud(s) linked, {orphans} without mother."
+                    + ("\n" + "\n".join(problems) if problems else ""))
+
 
 
 def reassign_buds_widget():
@@ -121,55 +176,7 @@ def reassign_buds_widget():
         status.value = "Draw a line from each bud to its mother, then Apply."
 
     def _apply(*_):
-        cells = _layer(viewer, cell_name.value)
-        if cells is None or not hasattr(cells, "data"):
-            status.value = f"No labels layer named '{cell_name.value}'."
-            return
-        links = _links()
-        if links is None or len(links.data) == 0:
-            status.value = "No lines drawn."
-            return
-
-        dic = np.asarray(cells.data)
-        buds_layer = _layer(viewer, bud_name.value)
-        bud_masks = np.asarray(buds_layer.data).copy() if buds_layer is not None else None
-        bud_cc = cc_label(bud_masks == BUD_VALUE, connectivity=2) if bud_masks is not None else None
-
-        merged = created = skipped = 0
-        for line in links.data:
-            a, b = _at(dic, line[0]), _at(dic, line[-1])
-            if a > 0 and b > 0 and a != b:
-                # both endpoints on cells -> smaller (bud) into larger (mother)
-                bud, mother = (a, b) if (dic == a).sum() <= (dic == b).sum() else (b, a)
-                region = dic == bud
-                dic[region] = mother
-                if bud_masks is not None:
-                    bud_masks[region] = BUD_VALUE      # bud stays a bud
-                merged += 1
-            elif (a > 0) ^ (b > 0):
-                # one endpoint on a cell (mother), the other on a painted bud
-                mother = a if a > 0 else b
-                bud_point = line[-1] if a > 0 else line[0]
-                comp = _at(bud_cc, bud_point) if bud_cc is not None else 0
-                if comp > 0:
-                    region = bud_cc == comp
-                    dic[region] = mother               # add the painted bud to the mother
-                    if bud_masks is not None:
-                        bud_masks[region] = BUD_VALUE  # bud stays a bud
-                    created += 1
-                else:
-                    skipped += 1                       # no painted bud at that end
-            else:
-                skipped += 1
-
-        cells.data = dic
-        cells.refresh()
-        if buds_layer is not None:
-            buds_layer.data = bud_masks
-            buds_layer.refresh()
-        links.data = []
-        _refresh_overlays(viewer, dic, bud_masks)
-        status.value = f"Merged {merged}, created {created}, skipped {skipped}."
+        status.value = apply_drawn_lines(viewer, cell_name.value, bud_name.value)
 
     new_line_btn.clicked.connect(_new_line)
     apply_btn.clicked.connect(_apply)

@@ -36,13 +36,25 @@ Launch napari with the plugin installed:
 
 The plugin's widgets appear under **Plugins → Napari Buddy**:
 
-- **Create config file** — build and save a buddy pipeline config (`.json`).
+- **buddy pipeline** — run the whole buddy pipeline from napari: choose a config file (or **Create config
+  file...**) and the input / output folders, then press the steps in order: 1 Read, 2 Segment, 3 Spots + buds,
+  4 Check and correct (opens the Correct images panel), 5 Reassign spots. Steps run in the background with a
+  progress bar and a time estimate (from earlier runs, then from this run); **Stop after this image** stops a
+  step cleanly. Images already processed with the same settings are skipped; for images processed with other
+  settings a yes/no question lists what changed. Needs buddy installed in the same environment.
+- **Create config file** — build and save a buddy pipeline config (`.json`): channels, detection
+  parameters, segmentation post-processing, GPU use, bud classification and re-run behaviour.
 - **Read in VSI file** — load a raw VSI image (DIC + channels) into napari.
 - **Filter / Detect / Threshold / Decompose spots** — tune spot-detection
   parameters interactively before running batch detection in buddy.
-- **Open data** — load a buddy result (`img.json`) as layers (DIC,
-  cell/nucleus masks, fluorescence channels, detected/decomposed spots).
-- **Reassign buds to mothers** — draw lines to link buds to their mother cells.
+- **Open data** — load a buddy result (`img.json`) as layers, grouped from bottom to top: DIC + DAPI,
+  raw channels, filtered channels, spots, masks (cell, nucleus and bud masks, a `bud → mother links`
+  layer with a line from each bud to its mother, and the `check these buds` boxes of the bud model).
+- **Layer groups** — show / hide whole groups of layers (by type or by channel) at once.
+- **Correct images** — `review_images(exp)` (from a buddy notebook) opens one image after the other with
+  previous / save / save + next / skip buttons.
+- **Reassign buds to mothers** — draw lines to link buds to their mother cells; the
+  `bud → mother links` layer updates after **Apply links** (saving also applies lines you drew).
 
 ## License
 

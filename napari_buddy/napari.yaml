@@ -15,6 +15,15 @@ contributions:
     - id: napari-buddy.reassign_buds_widget
       python_name: napari_buddy._bud_widget:reassign_buds_widget
       title: Reassign buds to mothers
+    - id: napari-buddy.pipeline_widget
+      python_name: napari_buddy._pipeline_widget:pipeline_widget
+      title: buddy pipeline
+    - id: napari-buddy.layer_groups_widget
+      python_name: napari_buddy._layer_groups:layer_groups_widget
+      title: Layer groups
+    - id: napari-buddy.correct_images_widget
+      python_name: napari_buddy._review:correct_images_widget
+      title: Correct images
     - id: napari-buddy.read_in_vsi_widget
       python_name: napari_buddy:read_in_vsi_widget
       title: Read in image
@@ -48,8 +57,12 @@ contributions:
       display_name: smRNA FISH E.coli rpoD/rnlAB/hipBA
       key: smRNAfish_Ecoli_rpoD_rnlAB_hipBA
   widgets:
+    - command: napari-buddy.pipeline_widget
+      display_name: buddy pipeline
     - command: napari-buddy.config_widget
       display_name: Create config file
+    - command: napari-buddy.correct_images_widget
+      display_name: Correct images
     - command: napari-buddy.read_in_vsi_widget
       display_name: Read in VSI file
     - command: napari-buddy.make_background_filtering_magic_widget
@@ -62,5 +75,7 @@ contributions:
       display_name: Decompose spots
     - command: napari-buddy.reassign_buds_widget
       display_name: Reassign buds to mothers
+    - command: napari-buddy.layer_groups_widget
+      display_name: Layer groups
 
 

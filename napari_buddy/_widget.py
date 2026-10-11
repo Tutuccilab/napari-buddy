@@ -1,5 +1,7 @@
 """
-Widgets to call Big-FISH functions. 
+Widgets to call Big-FISH functions. When PyTorch can use a GPU, the slow filtering steps (background filter,
+Laplacian-of-Gaussian + local maxima, decomposition denoising) run on the GPU with buddy.gpu_filters, which
+gives the same result as Big-FISH; otherwise Big-FISH runs on the CPU.
 """
 
 import napari
@@ -12,6 +14,19 @@ from buddy.experiment import Experiment
 
 from bigfish import detection
 from bigfish import stack
+from buddy import gpu_filters
+
+
+def _on_gpu(gpu, cpu):
+    """gpu(device) when a GPU is available (Big-FISH on the CPU if that fails), otherwise cpu()."""
+    device = gpu_filters.gpu_device()
+    if device is not None:
+        try:
+            return gpu(device)
+        except RuntimeError:                       # e.g. GPU out of memory
+            import torch
+            torch.cuda.empty_cache()
+    return cpu()
 
 import numpy as np
 import pandas as pd
@@ -62,7 +77,10 @@ def read_in_vsi_widget(
 def background_filtering_magic_widget(
     img_layer: "napari.layers.Image", sigma_z: "float" = 0.75, sigma_yx: "float" = 2.3
 ) -> "napari.types.LayerDataTuple":
-    return (stack.remove_background_gaussian(img_layer.data, (sigma_z, sigma_yx, sigma_yx)),
+    sigma = (sigma_z, sigma_yx, sigma_yx)
+    filtered = _on_gpu(lambda device: gpu_filters.remove_background(img_layer.data, sigma, device=device),
+                       lambda: stack.remove_background_gaussian(img_layer.data, sigma))
+    return (filtered,
             { 'name': f'{img_layer.name} background filtered', 'metadata': { 'channel' : img_layer.name } }, 'image')
 
 
@@ -90,11 +108,13 @@ def spot_detection_magic_widget(
         object_radius_nm=(spot_radius_z, spot_radius_yx, spot_radius_yx),
         ndim=3)
 
-    # LoG filter
-    rna_log = stack.log_filter(img_layer.data, sigma=spot_radius_px)
-
-    # local maximum detection
-    mask = detection.local_maximum_detection(rna_log, min_distance=spot_radius_px)
+    # LoG filter + local maximum detection (on the GPU when available)
+    voxel, radius = (scale_z, scale_yx, scale_yx), (spot_radius_z, spot_radius_yx, spot_radius_yx)
+    def _cpu():
+        rna_log = stack.log_filter(img_layer.data, sigma=spot_radius_px)
+        return rna_log, detection.local_maximum_detection(rna_log, min_distance=spot_radius_px)
+    rna_log, mask = _on_gpu(lambda device: gpu_filters.log_and_local_maxima(img_layer.data, voxel, radius, device=device),
+                            _cpu)
 
     spots, features = threshold_spots(rna_log, mask, threshold)
 
@@ -204,15 +224,14 @@ def spot_decomposition_magic_widget(
 
     rna = viewer.layers[f'{channel}'].data
 
-    decomp_spots, dense_regions, reference_spot = detection.decompose_dense(
-        rna,
-        spots,
-        voxel_size=metadata['scale'],
-        spot_radius=metadata['spot_radius'],
-        alpha=0.5,  # alpha impacts the number of spots per candidate region
-        beta=2,  # beta impacts the number of candidate regions to decompose
-        gamma=1  # gamma the filtering step to denoise the image
-    )
+    settings = dict(alpha=0.5,  # alpha impacts the number of spots per candidate region
+                    beta=2,     # beta impacts the number of candidate regions to decompose
+                    gamma=1)    # gamma the filtering step to denoise the image
+    decomp_spots, dense_regions, reference_spot = _on_gpu(
+        lambda device: gpu_filters.decompose_dense(rna, spots, metadata['scale'], metadata['spot_radius'],
+                                                   device=device, **settings),
+        lambda: detection.decompose_dense(rna, spots, voxel_size=metadata['scale'],
+                                          spot_radius=metadata['spot_radius'], **settings))
 
     features = pd.DataFrame(decomp_spots, columns=['z', 'y', 'x'])
     features['label'] = -1
