@@ -1,5 +1,7 @@
 # napari-buddy
 
+[![tests](https://github.com/Tutuccilab/napari-buddy/actions/workflows/tests.yml/badge.svg)](https://github.com/Tutuccilab/napari-buddy/actions/workflows/tests.yml)
+
 The napari GUI companion to [buddy](https://github.com/Tutuccilab/buddy). It
 provides napari widgets to drive the buddy smFISH pipeline interactively: build
 a pipeline config file, read in raw VSI images, tune spot detection (background
@@ -7,8 +9,8 @@ filtering → detection → thresholding → decomposition) with live sliders, l
 buddy results (`img.json`) as layers, and correct mother/bud assignments by
 hand.
 
-# Donwload code and example data
-Go to https://doi.org/10.5281/zenodo.22900927 to dowload napari, napari-buddy and some test data. 
+# Download code and example data
+Go to https://doi.org/10.5281/zenodo.22900927 to download napari, napari-buddy and some test data. 
 The folder structure of the zipped file should allow you to directly start with the tutorial after installation.
 Note: newer versions of the code can be downloaded by cloning this repo.
 
@@ -28,6 +30,9 @@ capped there). Use `python -m pip` so the install lands in the active env.
 See the [buddy](https://github.com/Tutuccilab/buddy) install guide for the full
 environment setup and troubleshooting.
 
+**Versions:** napari-buddy 0.1.1 works with buddy 0.1.0 up to 0.2.x. Both packages warn when the other one is too old
+or too new; update both with `git pull` and `python -m pip install -e .` in each repo.
+
 ## Usage
 
 Launch napari with the plugin installed:
@@ -38,7 +43,8 @@ The plugin's widgets appear under **Plugins → Napari Buddy**:
 
 - **buddy pipeline** — run the whole buddy pipeline from napari: choose a config file (or **Create config
   file...**) and the input / output folders, then press the steps in order: 1 Read, 2 Segment, 3 Spots + buds,
-  4 Check and correct (opens the Correct images panel), 5 Reassign spots. Steps run in the background with a
+  4 Check and correct (opens the Correct images panel), 5 Reassign spots; **Run 1-3** runs the automatic steps one
+  after the other. Starting a step closes the layers in napari to free memory. Steps run in the background with a
   progress bar and a time estimate (from earlier runs, then from this run); **Stop after this image** stops a
   step cleanly. Images already processed with the same settings are skipped; for images processed with other
   settings a yes/no question lists what changed. Needs buddy installed in the same environment.
@@ -51,10 +57,19 @@ The plugin's widgets appear under **Plugins → Napari Buddy**:
   raw channels, filtered channels, spots, masks (cell, nucleus and bud masks, a `bud → mother links`
   layer with a line from each bud to its mother, and the `check these buds` boxes of the bud model).
 - **Layer groups** — show / hide whole groups of layers (by type or by channel) at once.
-- **Correct images** — `review_images(exp)` (from a buddy notebook) opens one image after the other with
-  previous / save / save + next / skip buttons.
+- **Correct images** — choose the config file, then go through the images one after the other with
+  previous / save / save + next / skip buttons (also from a buddy notebook: `review_images(exp)`).
 - **Reassign buds to mothers** — draw lines to link buds to their mother cells; the
   `bud → mother links` layer updates after **Apply links** (saving also applies lines you drew).
+
+## Tests
+
+    python -m pip install -e ".[testing]"
+    pytest -m "not slow"
+
+The tests use buddy's test field (from the buddy repo next to this one, or downloaded from buddy's release
+`test-data-v1`) and check the reader and that the spot-tuning panels give the same result as buddy's pipeline.
+`pytest -m slow` also tests the Zenodo sample data (needs internet). GitHub runs the tests on every push.
 
 ## License
 
@@ -65,7 +80,5 @@ open source software.
 
 If you encounter a problem, please [file an issue] with a detailed description.
 
-[napari]: https://github.com/napari/napari
-[pytest]: https://docs.pytest.org/
 [BSD-3]: http://opensource.org/licenses/BSD-3-Clause
 [file an issue]: https://github.com/Tutuccilab/napari-buddy/issues
