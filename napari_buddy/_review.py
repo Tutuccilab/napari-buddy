@@ -77,9 +77,18 @@ def _prepare_layer(layer_data, max_project):
         if data.ndim == 3:
             data = data.max(axis=0)
         kwargs['blending'] = 'additive'
-        lo, hi = float(data.min()), float(data.max())
-        if hi > lo:
-            kwargs['contrast_limits'] = [lo, hi]
+        from ._reader import display_limits
+        meta = dict(kwargs.get('metadata', {}))
+        shown = display_limits(data, meta.get('group'), meta.get('spots_file'))   # channels: spots stand out
+        if shown:
+            kwargs['contrast_limits'] = shown[1]
+            meta.update(display_limits=shown[0], data_range=shown[1])
+        else:
+            meta.pop('display_limits', None)
+            lo, hi = float(data.min()), float(data.max())
+            if hi > lo:
+                kwargs['contrast_limits'] = [lo, hi]
+        kwargs['metadata'] = meta
     return data, kwargs, ltype
 
 
@@ -116,7 +125,7 @@ def _replace_layers(viewer, new_layers, clear=True):
                     old.contrast_limits_range = kw['contrast_limits']
                 old.data = data
                 if ltype == 'image' and 'contrast_limits' in kw:
-                    old.contrast_limits = kw['contrast_limits']
+                    old.contrast_limits = kw.get('metadata', {}).get('display_limits') or kw['contrast_limits']
                 old.metadata = kw.get('metadata', {})
                 layer = old
         except Exception as e:                          # an in-place update that napari refuses: recreate the layer
@@ -127,6 +136,9 @@ def _replace_layers(viewer, new_layers, clear=True):
                 viewer.layers.remove(old)
             layer = viewer._add_layer_from_data(data, kw, ltype)
             layer = layer[0] if isinstance(layer, list) else layer
+            if ltype == 'image':
+                from ._reader import apply_display_limits
+                apply_display_limits(layer)
         index = viewer.layers.index(layer)
         if index != position:                           # keep the group order of the reader
             viewer.layers.move(index, position)

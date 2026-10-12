@@ -1,9 +1,12 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-10-12)
 - New **cell cycle** layer (from buddy 0.3.0's `cell_cycle.csv`): the phase (S, G2 or M) written on each budded cell;
   hover a label for the reason buddy gave. G1 and unbudded cells get no label. Shown / hidden with the new
   *Cell-cycle phases* box in Layer groups.
+- The fluorescence channels (raw and filtered) open with contrast limits set from the image itself: the background
+  noise dark (low limit = a high percentile of the image), the detected spots bright (high limit = the brightness
+  of the spots). The slider still covers the full range.
 - Works with buddy 0.1.0 up to 0.3.x (the warning for newer buddy versions now starts at 0.4).
 - Tests: the widget tests use a viewer without a window (`ViewerModel`), so they also run on the Windows runners
   without OpenGL.

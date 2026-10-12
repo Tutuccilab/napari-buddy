@@ -40,3 +40,16 @@ def test_reader_spots_match_the_reference(processed_field, field_a):
         got = np.load(processed_field / f"{ch}_spots.npy")
         want = np.load(field_a / "reference" / "step3" / f"{ch}_spots.npy")
         assert got.shape == want.shape, f"{ch}: {len(got)} spots, reference {len(want)}"
+
+
+def test_fluorescence_channels_open_with_tight_contrast(processed_field):
+    """raw and filtered channels: limits well inside the data range, which stays the slider range"""
+    path = str(processed_field / "img.json")
+    layers = {kw["name"]: (data, kw) for data, kw, kind in napari_get_reader(path)(path) if kind == "image"}
+    for ch in CHANNELS:
+        for name in (ch, f"{ch} background filtered"):
+            data, kw = layers[name]
+            low, high = kw["metadata"]["display_limits"]
+            assert kw["contrast_limits"] == [float(data.min()), float(data.max())]
+            assert data.min() <= low < high < data.max()
+    assert "display_limits" not in layers["DIC"][1]["metadata"]          # DIC and DAPI keep napari's default

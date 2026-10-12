@@ -158,6 +158,66 @@ def cell_cycle_layer_data(base, cell_mask):
         'metadata': {'group': 'cellcycle'}}, 'points')]
 
 
+# Contrast on loading: the fluorescence channels open so the spots stand out and the background noise is dark (the
+# slider range stays the full data range, so you can still change it).
+#   low  : a high percentile of the image (most pixels are background): z-stack, 2D max projection
+#   high : the brightness of the detected spots ({channel}_spots.npy; SPOT_PERCENTILE of the values at the spots),
+#          or a very high percentile of the image when there are no spots yet
+DISPLAY_LOW = {'raw': (99, 97), 'filtered': (99, 90)}
+SPOT_PERCENTILE = 75
+NO_SPOTS_HIGH = (99.99, 99.9)
+
+
+def display_limits(data, group, spots_file=None):
+    """([low, high] to show, [min, max] of the data) for a raw / filtered channel image; None for other layers."""
+    if group not in DISPLAY_LOW:
+        return None
+    data = np.asarray(data)
+    full = [float(data.min()), float(data.max())]
+    if not full[1] > full[0]:
+        return None
+    stack = data.ndim == 3
+    step = max(1, int(round((data.size / 2e6) ** (1 / data.ndim))))         # ~2 million pixels are enough
+    sample = data[tuple(slice(None, None, step) for _ in range(data.ndim))]
+    low = float(np.percentile(sample, DISPLAY_LOW[group][0 if stack else 1]))
+    high = None
+    if spots_file and Path(spots_file).exists():
+        spots = np.load(spots_file)
+        if len(spots):
+            zyx = np.round(spots[:, :3]).astype(int)
+            idx = tuple(np.clip(zyx[:, k], 0, data.shape[i] - 1) for i, k in enumerate((0, 1, 2) if stack else (1, 2)))
+            high = float(np.percentile(data[idx], SPOT_PERCENTILE))
+    if high is None or not high > low:
+        high = float(np.percentile(sample, NO_SPOTS_HIGH[0 if stack else 1]))
+    low, high = max(low, full[0]), min(max(high, low + 1), full[1])
+    return [low, high], full
+
+
+def apply_display_limits(layer):
+    """Set an image layer to the limits the reader chose (metadata['display_limits']), keeping the full slider range."""
+    meta = layer.metadata if isinstance(layer.metadata, dict) else {}
+    limits, full = meta.get('display_limits'), meta.get('data_range')
+    if limits and full and hasattr(layer, 'contrast_limits_range'):
+        layer.contrast_limits_range = full
+        layer.contrast_limits = limits
+
+
+_HOOKED_VIEWERS = set()
+
+
+def _hook_display_limits():
+    """napari sets the slider range to the limits a layer is added with; widen it again when our layers arrive."""
+    try:
+        import napari
+        viewer = napari.current_viewer()
+    except Exception:
+        return
+    if viewer is None or id(viewer) in _HOOKED_VIEWERS:
+        return
+    viewer.layers.events.inserted.connect(lambda event: apply_display_limits(event.value))
+    _HOOKED_VIEWERS.add(id(viewer))
+
+
 def max_projection(stack_file):
     """
     2D maximum projection of a z-stack file, from projections/<name>_max.tif (written by buddy, or made
@@ -301,8 +361,16 @@ def read_smfish_json(path, max_project=False):
 
         kwargs = dict(l['add_kwargs'])
         kwargs['metadata'] = {**kwargs.get('metadata', {}), 'group': l['group']}   # own copy per layer
+        if l['layer_type'] == 'image':
+            spots_file = file.parent / f"{kwargs['metadata']['channel']}_spots.npy" if 'channel' in kwargs['metadata'] else None
+            shown = display_limits(data, l['group'], spots_file)        # fluorescence channels: spots stand out
+            if shown:
+                kwargs['contrast_limits'] = shown[1]
+                kwargs['metadata'].update(display_limits=shown[0], data_range=shown[1],
+                                          spots_file=str(spots_file) if spots_file else None)
         tuples_by_group[l['group']].append((data, kwargs, l['layer_type']))
 
     tuples_by_group['masks'].extend(bud_layer_data(_base, cell_mask))
     tuples_by_group['cellcycle'].extend(cell_cycle_layer_data(_base, cell_mask))
+    _hook_display_limits()
     return [t for g in GROUP_ORDER for t in tuples_by_group[g]]
