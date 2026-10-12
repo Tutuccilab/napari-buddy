@@ -30,7 +30,7 @@ capped there). Use `python -m pip` so the install lands in the active env.
 See the [buddy](https://github.com/Tutuccilab/buddy) install guide for the full
 environment setup and troubleshooting.
 
-**Versions:** napari-buddy 0.1.1 works with buddy 0.1.0 up to 0.2.x. Both packages warn when the other one is too old
+**Versions:** napari-buddy 0.2.0 works with buddy 0.1.0 up to 0.3.x (the cell-cycle layers need buddy 0.3.0). Both packages warn when the other one is too old
 or too new; update both with `git pull` and `python -m pip install -e .` in each repo.
 
 ## Usage
@@ -55,8 +55,9 @@ The plugin's widgets appear under **Plugins → Napari Buddy**:
   parameters interactively before running batch detection in buddy.
 - **Open data** — load a buddy result (`img.json`) as layers, grouped from bottom to top: DIC + DAPI,
   raw channels, filtered channels, spots, masks (cell, nucleus and bud masks, a `bud → mother links`
-  layer with a line from each bud to its mother, and the `check these buds` boxes of the bud model).
-- **Layer groups** — show / hide whole groups of layers (by type or by channel) at once.
+  layer with a line from each bud to its mother, and the `check these buds` boxes of the bud model) and, with
+  buddy 0.3.0, the `cell cycle` layers (cells in S, G2 and M coloured by phase, with the phase written on them).
+- **Layer groups** — show / hide whole groups of layers (by type, including the cell-cycle phases, or by channel) at once.
 - **Correct images** — choose the config file, then go through the images one after the other with
   previous / save / save + next / skip buttons (also from a buddy notebook: `review_images(exp)`).
 - **Reassign buds to mothers** — draw lines to link buds to their mother cells; the

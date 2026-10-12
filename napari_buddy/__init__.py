@@ -1,8 +1,8 @@
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 # buddy versions this plugin works with: from MIN_BUDDY up to and including the MAX_BUDDY minor version
 MIN_BUDDY = (0, 1, 0)
-MAX_BUDDY = (0, 2)
+MAX_BUDDY = (0, 3)
 
 
 def _check_buddy():

@@ -84,7 +84,7 @@ def reader_function(path):
 
 # Layer groups (see _layer_groups.py). The reader adds the layers group by group, from the bottom
 # of napari's layer list to the top, so the layers of a group sit together.
-GROUP_ORDER = ["images", "raw", "filtered", "spots", "masks"]
+GROUP_ORDER = ["images", "raw", "filtered", "spots", "masks", "cellcycle"]
 FLAG_COLOURS = {"close call": "red", "bud without mother": "orange",
                 "weak pair": "yellow", "possible missed bud": "yellow",
                 # cell_flags.csv (buddy/cell_flags.py): unbudded cells with high ASH1/CLB2
@@ -128,6 +128,51 @@ def bud_layer_data(base, cell_mask=None):
     return tuples
 
 
+# cell-cycle phases (buddy >= 0.3.0, cell_cycle.csv): only budded phases are coloured; G1 / unbudded cells are not
+PHASE_COLOURS = {"S": "#55A868", "G2": "#C44E52", "M": "#8172B3"}
+
+
+def cell_cycle_layer_data(base, cell_mask):
+    """
+    Layer data tuples for buddy's cell-cycle phases (cell_cycle.csv, written by buddy >= 0.3.0), in the 'cellcycle'
+    group:
+      cell cycle          the cells in S, G2 and M filled with the colour of their phase (G1 / unbudded / NA: not shown)
+      cell cycle (text)   the phase written on each of those cells; hover for the reason buddy gave
+    Nothing is returned when the file or the cell mask is missing, or no cell is in S, G2 or M.
+    """
+    from scipy import ndimage as ndi
+    table_file = Path(base) / 'cell_cycle.csv'
+    if cell_mask is None or not table_file.exists():
+        return []
+    table = pd.read_csv(table_file)
+    shown = table[table['cell_cycle_phase'].isin(list(PHASE_COLOURS))]
+    if not len(shown):
+        return []
+    codes = {p: i for i, p in enumerate(PHASE_COLOURS, start=1)}            # S = 1, G2 = 2, M = 3
+    lut = np.zeros(int(max(cell_mask.max(), table['image_cell_id'].max())) + 1, np.uint8)
+    lut[shown['image_cell_id'].to_numpy(int)] = [codes[p] for p in shown['cell_cycle_phase']]
+    phase_map = lut[cell_mask]
+    try:
+        from napari.utils.colormaps import DirectLabelColormap
+        colormap = DirectLabelColormap(color_dict={None: 'transparent', 0: 'transparent',
+                                                   **{codes[p]: c for p, c in PHASE_COLOURS.items()}})
+        colour_kwargs = {'colormap': colormap}
+    except ImportError:                    # older napari
+        colour_kwargs = {'color': {0: 'transparent', **{codes[p]: c for p, c in PHASE_COLOURS.items()}}}
+    tuples = [(phase_map, {'name': 'cell cycle', 'opacity': 0.45, 'visible': True, **colour_kwargs,
+                           'metadata': {'group': 'cellcycle'}}, 'labels')]
+    labels = shown['image_cell_id'].to_numpy(int)
+    centres = np.array(ndi.center_of_mass(np.ones_like(cell_mask), cell_mask, labels)).reshape(-1, 2)
+    keep = np.isfinite(centres).all(axis=1)                                   # cells missing from the mask
+    features = shown[['cell_cycle_phase', 'why', 'image_cell_id']].reset_index(drop=True)[keep].reset_index(drop=True)
+    tuples.append((centres[keep], {
+        'name': 'cell cycle (text)', 'size': 1, 'face_color': 'transparent', 'border_width': 0,
+        'features': features,
+        'text': {'string': '{cell_cycle_phase}', 'color': 'white', 'size': 9, 'anchor': 'center'},
+        'metadata': {'group': 'cellcycle'}}, 'points'))
+    return tuples
+
+
 def max_projection(stack_file):
     """
     2D maximum projection of a z-stack file, from projections/<name>_max.tif (written by buddy, or made
@@ -158,6 +203,7 @@ def read_smfish_json(path, max_project=False):
       filtered  {channel} background filtered               (visible)
       spots     detected + decomposed spots per channel     (visible)
       masks     DIC masks (visible), DAPI masks (hidden), bud masks, bud -> mother links, check these buds
+      cellcycle cell cycle (cells in S, G2, M coloured by phase) + cell cycle (text)   (buddy >= 0.3.0)
     Every layer gets metadata['group'] (and metadata['channel'] for channel layers), used by the
     Layer groups widget to show / hide whole groups.
     max_project=True: z-stacks are loaded as 2D maximum projections (from projections/, see max_projection).
@@ -273,4 +319,5 @@ def read_smfish_json(path, max_project=False):
         tuples_by_group[l['group']].append((data, kwargs, l['layer_type']))
 
     tuples_by_group['masks'].extend(bud_layer_data(_base, cell_mask))
+    tuples_by_group['cellcycle'].extend(cell_cycle_layer_data(_base, cell_mask))
     return [t for g in GROUP_ORDER for t in tuples_by_group[g]]

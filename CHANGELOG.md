@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased (tests only, no code change)
+## 0.2.0 (unreleased)
+- New **cell cycle** layers (from buddy 0.3.0's `cell_cycle.csv`): the cells in S, G2 and M filled with the colour of
+  their phase (green / red / purple), with the phase written on each cell; hover a cell's label for the reason buddy
+  gave. G1 and unbudded cells are not coloured. Shown / hidden with the new *Cell-cycle phases* box in Layer groups.
+- Works with buddy 0.1.0 up to 0.3.x (the warning for newer buddy versions now starts at 0.4).
+- Tests: the widget tests use a viewer without a window (`ViewerModel`), so they also run on the Windows runners
+  without OpenGL.
+
+## Tests only, no code change (after 0.1.1)
 - Tests rewritten on buddy's test field (reader; spot-tuning panels give the same result as buddy's pipeline);
   GitHub workflow on Linux and Windows. Removed the template leftovers (`test_writer.py`, `tox.ini`).
 

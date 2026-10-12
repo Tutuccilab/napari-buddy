@@ -3,7 +3,7 @@ napari widget: show / hide whole groups of layers at once.
 
 napari has no layer groups (yet), so this widget groups layers itself:
   by type     Images (DIC, DAPI) | Raw channels | Filtered channels | Spots | Masks (cell, nucleus, bud masks,
-              bud -> mother links, check these buds)
+              bud -> mother links, check these buds) | Cell-cycle phases
   by channel  every layer of one fluorescence channel (raw, filtered, spots)
 
 A layer's group comes from metadata['group'] / metadata['channel'] (set by the napari-buddy reader),
@@ -16,7 +16,7 @@ Light module (magicgui only; napari imported lazily).
 from magicgui.widgets import Container, CheckBox, Label
 
 TYPE_GROUPS = [("images", "Images (DIC, DAPI)"), ("raw", "Raw channels"), ("filtered", "Filtered channels"),
-               ("spots", "Spots"), ("masks", "Masks + buds")]
+               ("spots", "Spots"), ("masks", "Masks + buds"), ("cellcycle", "Cell-cycle phases")]
 
 
 def layer_group(layer):
@@ -25,6 +25,8 @@ def layer_group(layer):
     if group:
         return group
     name = layer.name.lower()
+    if "cell cycle" in name:
+        return "cellcycle"
     if "mask" in name or "bud" in name or "link" in name or "potential" in name:
         return "masks"
     if "spots" in name or "dense regions" in name or "local maxima" in name:
