@@ -1,9 +1,9 @@
 # Changelog
 
 ## 0.2.0 (unreleased)
-- New **cell cycle** layers (from buddy 0.3.0's `cell_cycle.csv`): the cells in S, G2 and M filled with the colour of
-  their phase (green / red / purple), with the phase written on each cell; hover a cell's label for the reason buddy
-  gave. G1 and unbudded cells are not coloured. Shown / hidden with the new *Cell-cycle phases* box in Layer groups.
+- New **cell cycle** layer (from buddy 0.3.0's `cell_cycle.csv`): the phase (S, G2 or M) written on each budded cell;
+  hover a label for the reason buddy gave. G1 and unbudded cells get no label. Shown / hidden with the new
+  *Cell-cycle phases* box in Layer groups.
 - Works with buddy 0.1.0 up to 0.3.x (the warning for newer buddy versions now starts at 0.4).
 - Tests: the widget tests use a viewer without a window (`ViewerModel`), so they also run on the Windows runners
   without OpenGL.
