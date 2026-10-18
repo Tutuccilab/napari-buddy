@@ -9,15 +9,21 @@ layers only, so they always show the current state (bud model, painting by hand,
     red line + dot   from the mother's centre (mother part only) to the bud's centre (dot at the bud)
     white circle     bud without a mother (no cell label under it, or a cell that is only bud)
 
-A bud is the connected bud pixels within one cell, so two touching buds of different mothers stay separate.
+A bud is the connected bud pixels within one cell (joined through shared edges, as in buddy's bud model), so two
+touching buds of different mothers stay separate.
 
 Light module (numpy + skimage); napari is only used through the viewer passed in.
 """
 import numpy as np
 from skimage.measure import regionprops, label as cc_label
 
+try:     # the bud-mask values are defined once, in buddy (shared with its bud model)
+    from buddy.buds.bud_tools import BACKGROUND, BUD, MOTHER
+except ImportError:                                     # buddy 0.1.0
+    from buddy.bud_tools import BG as BACKGROUND, BUD, MOTHER
+
 LINKS_LAYER = "bud → mother links"
-BUD_VALUE = 1
+BUD_VALUE = BUD
 LINK_COLOUR = "red"
 ORPHAN_COLOUR = "white"
 
@@ -37,7 +43,7 @@ def bud_links(cell_masks, bud_masks):
 
     pairs, orphans = [], []
     # connected bud pixels per cell label (label + 1, so buds painted on background form their own group)
-    buds_per_cell = cc_label(np.where(is_bud, cell_masks.astype(np.int64) + 1, 0), background=0, connectivity=2)
+    buds_per_cell = cc_label(np.where(is_bud, cell_masks.astype(np.int64) + 1, 0), background=0, connectivity=1)
     for bud in regionprops(buds_per_cell):
         under = cell_masks[bud.coords[:, 0], bud.coords[:, 1]]
         under = under[under > 0]

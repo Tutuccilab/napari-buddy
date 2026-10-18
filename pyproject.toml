@@ -32,7 +32,6 @@ dependencies = [
     "scikit-image",
     "pandas",           # _reader.py / _widget.py
     "big-fish",         # _widget.py: from bigfish import detection, stack
-    "appdirs",          # _sample_data.py: from appdirs import AppDirs
     # buddy is the sibling package, installed editable from its own repo -
     # it is NOT on PyPI, so install buddy FIRST, then this plugin. pip will
     # then see the requirement already satisfied instead of hitting PyPI.

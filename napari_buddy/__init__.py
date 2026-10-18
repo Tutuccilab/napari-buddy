@@ -1,8 +1,8 @@
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # buddy versions this plugin works with: from MIN_BUDDY up to and including the MAX_BUDDY minor version
 MIN_BUDDY = (0, 1, 0)
-MAX_BUDDY = (0, 3)
+MAX_BUDDY = (0, 4)
 
 
 def _check_buddy():
@@ -30,13 +30,13 @@ except Exception:      # a version check must never stop the plugin from loading
 
 # Light modules: safe to import eagerly (no torch / no Java / no buddy).
 from ._reader import napari_get_reader
-from ._sample_data import make_sample_data, smRNAfish_Ecoli_rpoD_rnlAB_hipBA, get_smRNAfish_Ecoli_rpoD_rnlAB_hipBA
 from ._config_widget import config_widget, build_config, save_config
 from ._bud_widget import reassign_buds_widget
 from ._layer_groups import layer_groups_widget
 from ._bud_links import update_links
 from ._review import open_for_correction, save_corrections, review_images
 from ._pipeline_widget import pipeline_widget
+from ._tabs import pipeline_tabs, spot_tuning_tabs, correct_tabs
 
 # Heavy widgets live in ._widget, which imports buddy (-> big-fish / omnipose /
 # bio-formats). Importing that at package load makes *everything* slow - even
@@ -63,6 +63,9 @@ def __getattr__(name):
 __all__ = (
     "napari_get_reader",
     "pipeline_widget",
+    "pipeline_tabs",
+    "spot_tuning_tabs",
+    "correct_tabs",
     "config_widget",
     "reassign_buds_widget",
     "layer_groups_widget",
@@ -77,7 +80,4 @@ __all__ = (
     "spot_detection_magic_widget",
     "spot_thresholding_magic_widget",
     "spot_decomposition_magic_widget",
-    "make_sample_data",
-    "smRNAfish_Ecoli_rpoD_rnlAB_hipBA",
-    "get_smRNAfish_Ecoli_rpoD_rnlAB_hipBA",
 )

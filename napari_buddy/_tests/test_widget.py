@@ -52,7 +52,7 @@ def stack(field_a):
 def filtered(stack, settings):
     """buddy's background filter on the whole stack"""
     detection = _detection()
-    out, _ = detection.filter_background(stack, settings["sigma"], 0, stack.shape[0])
+    out, _ = detection.filter_background(stack, settings["sigma"])
     return out
 
 
@@ -82,10 +82,7 @@ def test_spot_detection_panel_equals_pipeline(viewer, stack, filtered, settings)
     assert kind == "points" and len(spots) > 0
     pipeline_spots, _, _ = detection.detect_spots(stack, filtered, 0, stack.shape[0], 50, settings["scale"],
                                                   settings["spot_radius"])
-    # the pipeline leaves out spots in the lowest slices (DROP_BOTTOM_SLICES); the panel shows all
-    shown = _coordinates(spots)
-    shown = shown[shown[:, 0] > detection.DROP_BOTTOM_SLICES]
-    assert np.array_equal(shown, _coordinates(pipeline_spots))
+    assert np.array_equal(_coordinates(spots), _coordinates(pipeline_spots))
 
 
 def test_thresholding_panel_equals_detecting_at_that_threshold(viewer, filtered, settings):

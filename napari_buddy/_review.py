@@ -25,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
-BUD = 1
+from ._bud_links import BUD     # bud-mask value, defined once in buddy
 _DOCKED = {}    # (id(viewer), panel name) -> dock widget, so each panel is added to a viewer only once
 _PANELS = {}    # id(viewer) -> the Correct images panel
 _PREFETCH = {}  # img.json path -> (file times, future with the prepared layers), see _prefetch
@@ -45,6 +45,7 @@ def _dock_once(viewer, name, make_widget, replace=False):
         except RuntimeError:                      # the dock was closed and deleted
             alive = False
         if alive and not replace:
+            getattr(old, 'activate', lambda: None)()      # a panel living in a tab (_tabs.py): show that tab
             return
         if alive:
             try:

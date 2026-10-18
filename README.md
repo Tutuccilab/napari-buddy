@@ -70,7 +70,7 @@ The plugin's widgets appear under **Plugins → Napari Buddy**:
 
 The tests use buddy's test field (from the buddy repo next to this one, or downloaded from buddy's release
 `test-data-v1`) and check the reader and that the spot-tuning panels give the same result as buddy's pipeline.
-`pytest -m slow` also tests the Zenodo sample data (needs internet). GitHub runs the tests on every push.
+GitHub runs the tests on every push.
 
 ## License
 

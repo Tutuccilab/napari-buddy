@@ -17,7 +17,16 @@ contributions:
       title: Reassign buds to mothers
     - id: napari-buddy.pipeline_widget
       python_name: napari_buddy._pipeline_widget:pipeline_widget
+      title: buddy pipeline (panel only)
+    - id: napari-buddy.pipeline_tabs
+      python_name: napari_buddy._tabs:pipeline_tabs
       title: buddy pipeline
+    - id: napari-buddy.spot_tuning_tabs
+      python_name: napari_buddy._tabs:spot_tuning_tabs
+      title: Spot tuning
+    - id: napari-buddy.correct_tabs
+      python_name: napari_buddy._tabs:correct_tabs
+      title: Correct images
     - id: napari-buddy.layer_groups_widget
       python_name: napari_buddy._layer_groups:layer_groups_widget
       title: Layer groups
@@ -39,43 +48,14 @@ contributions:
     - id: napari-buddy.spot_decomposition_magic_widget
       python_name: napari_buddy:spot_decomposition_magic_widget
       title: Make spot decomposition magic widget
-    - id: napari-buddy.make_sample_data
-      python_name: napari_buddy._sample_data:make_sample_data
-      title: Load random sample data
-    - id: napari-buddy.smRNAfish_Ecoli_rpoD_rnlAB_hipBA
-      python_name: napari_buddy._sample_data:smRNAfish_Ecoli_rpoD_rnlAB_hipBA
-      title: Load test data from buddy
   readers:
     - command: napari-buddy.get_reader
       accepts_directories: false
       filename_patterns: ['*.json']
-  sample_data:
-    - command: napari-buddy.make_sample_data
-      display_name: Example data
-      key: Example data
-    - command: napari-buddy.smRNAfish_Ecoli_rpoD_rnlAB_hipBA
-      display_name: smRNA FISH E.coli rpoD/rnlAB/hipBA
-      key: smRNAfish_Ecoli_rpoD_rnlAB_hipBA
   widgets:
-    - command: napari-buddy.pipeline_widget
+    - command: napari-buddy.pipeline_tabs
       display_name: buddy pipeline
-    - command: napari-buddy.config_widget
-      display_name: Create config file
-    - command: napari-buddy.correct_images_widget
+    - command: napari-buddy.spot_tuning_tabs
+      display_name: Spot tuning
+    - command: napari-buddy.correct_tabs
       display_name: Correct images
-    - command: napari-buddy.read_in_vsi_widget
-      display_name: Read in VSI file
-    - command: napari-buddy.make_background_filtering_magic_widget
-      display_name: Filter out background
-    - command: napari-buddy.make_spot_detection_magic_widget
-      display_name: Detect spot
-    - command: napari-buddy.spot_thresholding_magic_widget
-      display_name: Threshold spots
-    - command: napari-buddy.spot_decomposition_magic_widget
-      display_name: Decompose spots
-    - command: napari-buddy.reassign_buds_widget
-      display_name: Reassign buds to mothers
-    - command: napari-buddy.layer_groups_widget
-      display_name: Layer groups
-
-

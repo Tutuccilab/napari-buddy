@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0 (2026-10-18)
+- **Three tabbed panels** in Plugins → Napari Buddy instead of ten entries: **buddy pipeline** (Pipeline, Config),
+  **Spot tuning** (Read image, Filter, Detect, Threshold, Decompose) and **Correct images** (Images, Buds, Layers). Each
+  tab is the unchanged panel of before.
+- Buds tab: a line from a bud that is already linked to a mother (it shares that cell's label, e.g. a red *close call*
+  of the bud model) to another cell moves the bud: its painted pixels are cut out of the old mother's label and merged
+  into the new one. Repainting the bud with a new label first is no longer needed. The status line reports
+  *moved N bud(s) to another mother*; the old *the paint covers less than half of cell N* refusal is gone.
+- Tests for the lines of the Buds tab on synthetic masks (`_tests/test_bud_lines.py`).
+- Pipeline panel: the bud model is loaded in the GUI thread before a step starts (and before Omnipose in Run 1-3), and
+  the Omnipose networks are released after step 2. Loading the bud model next to Omnipose from a worker thread hung
+  now and then on Windows.
+- File → Open Sample: the two entries removed (leftovers of the plugin template; one returned a random image, the other
+  downloaded a zip from Zenodo and returned nothing). The example data are the "test yourself" set on Zenodo.
+- Works with buddy up to 0.4.x.
+
 ## 0.2.0 (2026-10-12)
 - New **cell cycle** layer (from buddy 0.3.0's `cell_cycle.csv`): the phase (S, G2 or M) written on each budded cell;
   hover a label for the reason buddy gave. G1 and unbudded cells get no label. Shown / hidden with the new

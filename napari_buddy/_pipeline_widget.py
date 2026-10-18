@@ -260,6 +260,20 @@ def pipeline_widget(ask=None):
     ticker.setInterval(500)
     ticker.timeout.connect(_tick)
 
+    def _release_omnipose(exp):
+        """Drop the Omnipose networks and free the GPU when step 2 is done, so that step 3 loads the bud model
+        on a clean GPU (loading it next to the resident Omnipose models hung or crashed now and then). A later
+        step 2 loads Omnipose again."""
+        exp.cell_model = exp.nuclei_model = None
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
     def _free_viewer_memory():
         """Close the layers in napari and drop the read-ahead cache of the Correct-images panel: a step-3 image
         needs several GB, and the open layers of a reviewed image compete with it for RAM."""
@@ -359,9 +373,22 @@ def pipeline_widget(ask=None):
         else:
             state['chain'] = []
 
+    def _preload_bud_model(exp, key):
+        """Load the bud model in the GUI thread, before the step's worker starts. Loading it from a worker thread
+        (the first CUDA call of that thread) stalled forever now and then on Windows; from the main thread it has
+        not. Done for step 3, and for step 2 when step 3 follows in the chain (Run 1-3)."""
+        if not exp.bud_classification['enabled'] or hasattr(exp, 'bud_model'):
+            return
+        if key == 'spots' or (key == 'segment' and 'spots' in state['chain']):
+            status.value = "Loading the bud model..."
+            from qtpy.QtWidgets import QApplication
+            QApplication.processEvents()
+            exp.init_bud_model()
+
     def _run_step(key):
         try:
             exp = _experiment()
+            _preload_bud_model(exp, key)
         except Exception as e:
             status.value = f"Cannot start: {e}"
             state['chain'] = []
@@ -413,12 +440,19 @@ def pipeline_widget(ask=None):
         prior = prior_seconds(_earlier(exp), pipeline.STEP_TIMES['segment'])
         estimate = Estimate({'segment': (len(todo), prior or DEFAULT_SECONDS['segment'])})
         yield ('progress', 'segment', 0, len(todo), f"Segment: {estimate.text()}", estimate.seconds_left())
+        if 'spots' in state['chain'] and exp.bud_classification['enabled'] and not hasattr(exp, 'bud_model'):
+            # Run 1-3: load the bud model now, before Omnipose, on an untouched GPU. Loading it in step 3, after
+            # Omnipose ran in another thread, stalled in the first CUDA call now and then (an idle, empty GPU;
+            # torch waits forever). The model is kept on the Experiment for step 3.
+            yield ('status', 'segment', "Segment: loading the bud model (for step 3)...")
+            exp.init_bud_model()
         if getattr(exp, 'cell_model', None) is None:
             yield ('status', 'segment', "Segment: loading Omnipose...")
             exp.init_omnipose()
         yield ('status', 'segment', f"Segment: {len(todo)} image(s) on the {'GPU' if exp.use_GPU else 'CPU'}")
         done, failed = yield from _serial('segment', 'segment', lambda f: pipeline.segment_image(f, exp),
                                           todo, estimate, 'Segment')
+        _release_omnipose(exp)
         yield _summary('segment', 'Segment', done, failed, len(todo), started)
 
     def _spots(todo):
@@ -441,7 +475,17 @@ def pipeline_widget(ask=None):
             if not hasattr(exp, 'bud_model'):
                 yield ('status', 'spots', "Spots: loading the bud model..." if exp.bud_classification['enabled']
                        else "Spots: running")
-                exp.init_bud_model()
+                # loading has hung now and then (napari, after step 2): if it takes more than a minute, print
+                # the stack of every thread to the terminal, so the hang shows where it sits
+                import faulthandler, sys
+                try:                                   # sys.__stderr__: the real terminal, not napari's redirect
+                    faulthandler.dump_traceback_later(60, repeat=True, file=sys.__stderr__)
+                except Exception:
+                    pass
+                try:
+                    exp.init_bud_model()
+                finally:
+                    faulthandler.cancel_dump_traceback_later()
                 estimate.restart_clock()
 
         def both(f):                       # 3a + 3b for one image

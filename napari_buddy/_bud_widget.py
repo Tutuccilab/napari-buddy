@@ -8,9 +8,13 @@ Workflow
 2. Draw a short line between a bud and its mother (either direction):
      * bud missing from the DIC segmentation -> first paint it in the 'bud masks' layer (label 1), then
        draw the line from the painted bud to its mother. The end on the painted bud is the bud, so it
-       does not matter if the paint overlaps the mother's edge. Painted pixels outside any cell are added
-       to the mother; other cells under the paint are not changed.
+       does not matter if the paint overlaps the mother's edge. A cell lying mostly (> 50 %) under the
+       paint is part of the bud and merged into the mother (the bud model's rule); painted pixels outside
+       any cell are added to the mother; other cells under the paint are not changed.
      * bud segmented as its own DIC cell -> that cell is merged into the mother (painted or not).
+     * bud linked to the wrong mother (it already shares that cell's label; e.g. a red 'close call' box) ->
+       draw the line from the bud (its red pixels in 'bud masks') to the right mother. The painted bud is cut
+       out of the wrong mother's label and merged into the right one; nothing needs repainting.
 3. Click "Apply links". The chosen Labels layer is edited in place, the
    'bud -> mother links' layer (a line from each bud to its mother) and, if shown,
    the 'potential buds' rectangles are redrawn, and the processed lines are cleared.
@@ -23,10 +27,11 @@ import numpy as np
 from skimage.measure import regionprops, label as cc_label
 from magicgui.widgets import Container, PushButton, Label, LineEdit
 
+from ._bud_links import BACKGROUND, BUD as BUD_VALUE, MOTHER
+
 CELL_LAYER_DEFAULT = "DIC masks"
 BUD_LAYER_DEFAULT = "bud masks"
 LINKS_LAYER = "draw bud <-> mother lines"   # lines you draw (the result is shown in "bud \u2192 mother links")
-BUD_VALUE = 1
 
 
 def _at(arr, point):
@@ -83,9 +88,9 @@ def apply_drawn_lines(viewer, cell_layer=CELL_LAYER_DEFAULT, bud_layer=BUD_LAYER
     dic = np.asarray(cells.data)
     buds_layer = _layer(viewer, bud_layer)
     bud_masks = np.asarray(buds_layer.data).copy() if buds_layer is not None else None
-    bud_cc = cc_label(bud_masks == BUD_VALUE, connectivity=2) if bud_masks is not None else None
+    bud_cc = cc_label(bud_masks == BUD_VALUE, connectivity=1) if bud_masks is not None else None
 
-    merged = created = linked_before = 0
+    merged = created = moved = linked_before = 0
     problems = []
     for n, line in enumerate(links.data, start=1):
         ends = (line[0], line[-1])
@@ -100,12 +105,22 @@ def apply_drawn_lines(viewer, cell_layer=CELL_LAYER_DEFAULT, bud_layer=BUD_LAYER
                 problems.append(f"line {n}: the mother end is not on a cell"); continue
             region = bud_cc == on_bud[k]
             changed = False
-            # the bud's own cell (the cell at the bud end of the line, and any cell lying mostly under
-            # the painted bud) is merged into the mother
+            # the bud's own cells (any cell lying mostly, > 50 %, under the painted bud - the bud model's
+            # rule) are merged into the mother
             labels, counts = np.unique(dic[region], return_counts=True)
-            own = {lab for lab, cnt in zip(labels, counts) if cnt > 0.5 * (dic == lab).sum()} | {on_cell[k]}
+            own = {lab for lab, cnt in zip(labels, counts) if cnt > 0.5 * (dic == lab).sum()}
             for lab in own - {0, mother}:
                 dic[dic == lab] = mother; changed = True
+            # the bud already belongs to another cell (the paint covers less than half of it, so it is a
+            # mother with this bud, not a cell that is all bud): cut the painted bud out of that cell and
+            # give it to the mother at the other end of the line. Only the paint connected to the line's
+            # bud end moves; the rest of the old mother is not touched.
+            old = on_cell[k]
+            did_move = False
+            if old not in (0, mother) and old not in own:
+                cut = region & (dic == old)
+                if cut.any():
+                    dic[cut] = mother; changed = did_move = True
             # painted pixels outside any cell become part of the mother (other cells are never touched)
             empty = region & (dic == 0)
             if empty.any():
@@ -115,8 +130,10 @@ def apply_drawn_lines(viewer, cell_layer=CELL_LAYER_DEFAULT, bud_layer=BUD_LAYER
                 for lab in np.unique(dic[region]):
                     if lab not in (0, mother):
                         spill = region & (dic == lab)
-                        bud_masks[spill] = 3 if (bud_masks[(dic == lab) & ~region] == 3).any() else 2
-            if changed:
+                        bud_masks[spill] = MOTHER if (bud_masks[(dic == lab) & ~region] == MOTHER).any() else BACKGROUND
+            if did_move:
+                moved += 1
+            elif changed:
                 created += 1
             else:
                 linked_before += 1
@@ -142,6 +159,7 @@ def apply_drawn_lines(viewer, cell_layer=CELL_LAYER_DEFAULT, bud_layer=BUD_LAYER
     links.data = []
     pairs, orphans = _refresh_overlays(viewer, dic, bud_masks)
     return (f"Merged {merged} cell(s), added {created} painted bud(s)"
+                    + (f", moved {moved} bud(s) to another mother" if moved else "")
                     + (f", {linked_before} already linked" if linked_before else "")
                     + f". {pairs} bud(s) linked, {orphans} without mother."
                     + ("\n" + "\n".join(problems) if problems else ""))
