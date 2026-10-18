@@ -1,5 +1,5 @@
 # napari-buddy's tests on every push and pull request, on Linux and Windows: the reader and the spot-tuning panels,
-# on buddy's test field (release test-data-v1 of buddy), with buddy installed from GitHub. napari runs without a
+# on buddy's test field (release test-data-v2 of buddy), with buddy installed from GitHub. napari runs without a
 # screen (headless-gui). The Zenodo sample-data test (needs internet, slow) is skipped: run it with `pytest -m slow`.
 name: tests
 
@@ -47,7 +47,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BUDDY_TOKEN || github.token }}
         run: |
-          gh release download test-data-v1 --repo Tutuccilab/buddy --pattern field_A.zip --dir "$RUNNER_TEMP" --clobber
+          gh release download test-data-v2 --repo Tutuccilab/buddy --pattern field_A.zip --dir "$RUNNER_TEMP" --clobber
           mkdir -p napari_buddy/_tests/data
           python -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall('napari_buddy/_tests/data')" "$RUNNER_TEMP/field_A.zip"
       - name: Tests (without a screen)

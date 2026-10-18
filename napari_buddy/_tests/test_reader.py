@@ -35,7 +35,7 @@ def test_reader_opens_a_processed_image(processed_field):
 
 
 def test_reader_spots_match_the_reference(processed_field, field_a):
-    """the spots napari shows are the ones buddy 0.1.0 found on this field (the regression reference)"""
+    """the spots napari shows are the ones buddy found on this field (the reference outputs of the test data)"""
     for ch in CHANNELS:
         got = np.load(processed_field / f"{ch}_spots.npy")
         want = np.load(field_a / "reference" / "step3" / f"{ch}_spots.npy")

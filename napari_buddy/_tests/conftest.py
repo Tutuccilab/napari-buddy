@@ -5,7 +5,7 @@ image with three smFISH channels, DAPI, DIC and Omnipose masks).
 Where it comes from, in this order:
   1. the buddy repo next to this one (../buddy/tests/data/field_A), when you have both repos side by side;
   2. napari_buddy/_tests/data/field_A (downloaded here before);
-  3. the GitHub release test-data-v1 of buddy (downloaded once into napari_buddy/_tests/data/).
+  3. the GitHub release test-data-v2 of buddy (downloaded once into napari_buddy/_tests/data/).
 Without it the tests that need it are skipped - or fail, when NAPARI_BUDDY_REQUIRE_TEST_DATA is set (GitHub workflow).
 """
 import io
@@ -21,7 +21,7 @@ import pytest
 TESTS_DIR = Path(__file__).resolve().parent
 DATA_DIR = TESTS_DIR / "data"
 SIBLING_FIELD = TESTS_DIR.parents[2] / "buddy" / "tests" / "data" / "field_A"
-TEST_DATA_URL = "https://github.com/Tutuccilab/buddy/releases/download/test-data-v1/field_A.zip"
+TEST_DATA_URL = "https://github.com/Tutuccilab/buddy/releases/download/test-data-v2/field_A.zip"
 CHANNELS = ("ASH1CLB2", "SRL1", "SUN4")
 
 
