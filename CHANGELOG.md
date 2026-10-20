@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 (2026-10-20)
+- The layer dropdowns of the tabbed panels (e.g. *img_layer* in Spot tuning → Filter) follow the layer list again:
+  new, removed, reordered and renamed layers show up without reopening the dock. napari refreshes the dropdowns of
+  the widget it docks, which since 0.3.0 is the tab container and not the panels inside it; napari-buddy now
+  connects the panels itself (`_tabs._sync_layer_choices`, with a test).
+
 ## 0.3.0 (2026-10-18)
 - **Three tabbed panels** in Plugins → Napari Buddy instead of ten entries: **buddy pipeline** (Pipeline, Config),
   **Spot tuning** (Read image, Filter, Detect, Threshold, Decompose) and **Correct images** (Images, Buds, Layers). Each

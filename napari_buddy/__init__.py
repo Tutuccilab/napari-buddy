@@ -1,4 +1,4 @@
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 # buddy versions this plugin works with: from MIN_BUDDY up to and including the MAX_BUDDY minor version
 MIN_BUDDY = (0, 1, 0)

@@ -34,15 +34,36 @@ class _TabPage:
             dock.raise_()
 
 
-def _tabbed(pages, register=()):
+def _sync_layer_choices(widget, layers):
+    """
+    Keep the layer dropdowns of a magicgui widget up to date with `layers` (a viewer's LayerList).
+
+    napari does this itself for the widget it docks, but it only sees the QTabWidget here, not the pages inside
+    it, so the dropdowns of the tabs would stay as they were when the dock was opened. Same events as napari
+    (inserted, removed, reordered), plus layer renames.
+    """
+    if not hasattr(widget, "reset_choices"):
+        return
+    for event in (layers.events.inserted, layers.events.removed, layers.events.reordered):
+        event.connect(widget.reset_choices)
+    for layer in layers:
+        layer.events.name.connect(widget.reset_choices)
+    layers.events.inserted.connect(lambda event: event.value.events.name.connect(widget.reset_choices))
+
+
+def _tabbed(pages, register=(), viewer=None):
     """
     A QTabWidget with one tab per (title, factory). register: (dock name, tab title) pairs whose pages are
-    registered with _dock_once under that dock name.
+    registered with _dock_once under that dock name. viewer: the viewer whose layers fill the dropdowns
+    (default: the current one).
     """
     import napari
     from qtpy.QtWidgets import QTabWidget
+
     from ._review import _DOCKED
 
+    if viewer is None:
+        viewer = napari.current_viewer()
     tabs = QTabWidget()
     natives = {}
     for title, make in pages:
@@ -50,7 +71,8 @@ def _tabbed(pages, register=()):
         native = getattr(widget, "native", widget)
         tabs.addTab(native, title)
         natives[title] = native
-    viewer = napari.current_viewer()
+        if viewer is not None:
+            _sync_layer_choices(widget, viewer.layers)
     if viewer is not None:
         for dock_name, title in register:
             _DOCKED[(id(viewer), dock_name)] = _TabPage(tabs, natives[title])
@@ -59,8 +81,8 @@ def _tabbed(pages, register=()):
 
 def pipeline_tabs():
     """Plugins > Napari Buddy > buddy pipeline: the pipeline panel and the config panel."""
-    from ._pipeline_widget import pipeline_widget
     from ._config_widget import config_widget
+    from ._pipeline_widget import pipeline_widget
     return _tabbed([("Pipeline", pipeline_widget), ("Config", config_widget)],
                    register=[("Create config file", "Config")])
 
@@ -77,8 +99,8 @@ def spot_tuning_tabs():
 
 def correct_tabs():
     """Plugins > Napari Buddy > Correct images: open the images, link buds, show or hide layer groups."""
-    from ._review import correct_images_widget
     from ._bud_widget import reassign_buds_widget
     from ._layer_groups import layer_groups_widget
+    from ._review import correct_images_widget
     return _tabbed([("Images", correct_images_widget), ("Buds", reassign_buds_widget), ("Layers", layer_groups_widget)],
                    register=[("Reassign buds to mothers", "Buds"), ("Layer groups", "Layers")])
