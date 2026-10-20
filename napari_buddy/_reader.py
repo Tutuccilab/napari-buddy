@@ -132,6 +132,16 @@ def bud_layer_data(base, cell_mask=None):
 CELL_CYCLE_SHOWN = ("S", "G2", "M")
 
 
+def _text_scaling():
+    """{'scaling': False} on napari versions whose text has the option (text keeps its size on screen when zooming)."""
+    try:
+        from napari.layers.utils.text_manager import TextManager
+    except ImportError:
+        return {}
+    fields = getattr(TextManager, "model_fields", None) or getattr(TextManager, "__fields__", {})
+    return {'scaling': False} if 'scaling' in fields else {}
+
+
 def cell_cycle_layer_data(base, cell_mask):
     """
     Layer data tuple for buddy's cell-cycle phases (cell_cycle.csv, written by buddy >= 0.3.0), in the 'cellcycle'
@@ -154,7 +164,7 @@ def cell_cycle_layer_data(base, cell_mask):
     return [(centres[keep], {
         'name': 'cell cycle', 'size': 1, 'face_color': 'transparent', 'border_width': 0,
         'features': features,
-        'text': {'string': '{cell_cycle_phase}', 'color': 'white', 'size': 9, 'anchor': 'center'},
+        'text': {'string': '{cell_cycle_phase}', 'color': 'white', 'size': 12, 'anchor': 'center', **_text_scaling()},
         'metadata': {'group': 'cellcycle'}}, 'points')]
 
 

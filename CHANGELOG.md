@@ -5,6 +5,8 @@
   new, removed, reordered and renamed layers show up without reopening the dock. napari refreshes the dropdowns of
   the widget it docks, which since 0.3.0 is the tab container and not the panels inside it; napari-buddy now
   connects the panels itself (`_tabs._sync_layer_choices`, with a test).
+- `cell cycle` layer: the phase labels are larger (12 instead of 9) and keep their size on screen when zooming
+  (napari >= 0.6; on older versions they scale with the zoom as before).
 
 ## 0.3.0 (2026-10-18)
 - **Three tabbed panels** in Plugins → Napari Buddy instead of ten entries: **buddy pipeline** (Pipeline, Config),
