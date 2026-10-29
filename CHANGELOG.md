@@ -9,6 +9,11 @@
   **Omnipose** (`min_size` / `nuclei_min_size` and the switch *use the organism's preset*, buddy 0.6's `use_preset`:
   on, the cells / nuclei fields show the preset and are locked; off, they are editable and saved with
   `use_preset: false`). Each tab scrolls, so the panel fits on a small screen and with many channel rows.
+- *buddy pipeline*: the bud model is loaded at the start of step 2, before Omnipose, and kept for step 3. Loaded
+  after Omnipose had used the GPU in the same napari process, the copy of the weights to the GPU could hang on
+  Windows (the panel then sat at "loading the bud model" for good). While a model loads, the status line counts the
+  seconds, since the first load after an install can take minutes; after three minutes it says the load is probably
+  stuck and what to do (close napari, run the step on its own) - a native call that never returns cannot be stopped.
 - The *bud masks* layer has fixed colours: bud red, mother faintly white, background transparent. The file keeps its
   values (1 = bud, 2 = background, 3 = mother); napari used to colour the background and the mothers like any label.
 - *Spot tuning* → Decompose has `alpha`, `beta`, `gamma` (were fixed at Big-FISH's 0.5, 2, 1, which stay the

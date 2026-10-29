@@ -283,6 +283,10 @@ def pipeline_widget(ask=None):
             _tick()
             step_status[key].value = text
         elif kind == 'status':
+            state.pop('waiting', None)
+            status.value = rest[0]
+        elif kind == 'waiting':                       # a long call without progress: show how long it has been
+            state['waiting'] = (rest[0], time.time())
             status.value = rest[0]
 
     def _tick(*_):
@@ -292,6 +296,9 @@ def pipeline_widget(ask=None):
         if sub and sub != state.get('substep_shown'):
             status.value = sub
             state['substep_shown'] = sub
+        if 'waiting' in state:
+            text, since = state['waiting']
+            status.value = f"{text} ({format_seconds(time.time() - since)} so far)"
         if 'progress' not in state:
             return
         done, total, expected, since = state['progress']
@@ -457,6 +464,12 @@ def pipeline_widget(ask=None):
         prior = prior_seconds(_earlier(exp), pipeline.STEP_TIMES['segment'])
         estimate = Estimate({'segment': (len(todo), prior or DEFAULT_SECONDS['segment'])})
         yield ('progress', 'segment', 0, len(todo), f"Segment: {estimate.text()}", estimate.seconds_left())
+        # the bud model is loaded here, before Omnipose, and kept for step 3: loading it after Omnipose has used
+        # the GPU in this process can hang in the copy of the weights to the GPU (seen on Windows); in this
+        # order it never did. The first load after an install can take minutes (file scan, CUDA start-up).
+        if not hasattr(exp, 'bud_model') and exp.bud_classification['enabled']:
+            yield ('waiting', 'segment', "Segment: loading the bud model (minutes after a fresh install, seconds later)")
+            exp.init_bud_model()
         if getattr(exp, 'cell_model', None) is None:
             yield ('status', 'segment', "Segment: loading Omnipose...")
             exp.init_omnipose()
@@ -482,9 +495,9 @@ def pipeline_widget(ask=None):
         yield ('progress', 'spots', 0, estimate.total, f"Spots: {estimate.text()}", estimate.seconds_left())
 
         def load_bud_model():
-            if not hasattr(exp, 'bud_model'):
-                yield ('status', 'spots', "Spots: loading the bud model..." if exp.bud_classification['enabled']
-                       else "Spots: running")
+            if not hasattr(exp, 'bud_model'):          # normally loaded in step 2 already (see _segment)
+                yield ('waiting', 'spots', "Spots: loading the bud model (minutes after a fresh install, seconds later)"
+                       if exp.bud_classification['enabled'] else "Spots: running")
                 exp.init_bud_model()
                 estimate.restart_clock()
 
