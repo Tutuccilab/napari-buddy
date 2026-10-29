@@ -25,10 +25,54 @@ import gc
 import time
 from pathlib import Path
 
-from magicgui.widgets import Container, FileEdit, Label, ProgressBar, PushButton
+from magicgui.widgets import (
+    Container,
+    FileEdit,
+    Label,
+    ProgressBar,
+    PushButton,
+)
 
 # rough seconds per image when there is nothing to go on (laptop with GPU, ~2.5 GB images)
 DEFAULT_SECONDS = {'read': 35, 'segment': 50, 'spots_a': 80, 'spots_b': 20, 'reassign': 15}
+
+
+def _example_config():
+    """buddy's config_files/config_example.json (the example set's config, every setting with its default), if there."""
+    try:
+        import buddy
+        path = Path(buddy.__file__).resolve().parents[1] / "config_files" / "config_example.json"
+        return path if path.is_file() else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def example_paths():
+    """
+    The example set next to the buddy repository, for pre-filled fields: dict(config, inputdir, outputdir, vsi, dic)
+    with the paths that exist (vsi / dic: the first image of the set), empty when buddy or the set is not there.
+    """
+    import json
+    cfg_file = _example_config()
+    if cfg_file is None:
+        return {}
+    try:
+        cfg = json.load(open(cfg_file, encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out = {"config": cfg_file}
+    for key in ("inputdir", "outputdir"):
+        folder = cfg.get(key)
+        if folder:
+            out[key] = Path(folder) if Path(folder).is_absolute() else (cfg_file.parent / folder).resolve()
+    if out.get("inputdir") and out["inputdir"].is_dir():
+        for vsi in sorted(out["inputdir"].glob("*.vsi")):
+            dic = vsi.with_name(vsi.name.rsplit("_", 1)[0] + "_DIC.tif") if "_" in vsi.name else None
+            out["vsi"] = vsi
+            if dic is not None and dic.is_file():
+                out["dic"] = dic
+            break
+    return out
 
 
 # ---------------------------------------------------------------------------------------------
@@ -138,7 +182,7 @@ def pipeline_widget(ask=None):
     viewer = napari.current_viewer()
     ask = ask or _ask_dialog
 
-    cfg_file = FileEdit(label="config file", filter="*.json")
+    cfg_file = FileEdit(label="config file", filter="*.json", value=_example_config() or "")
     inputdir = FileEdit(label="input folder", mode="d")
     outputdir = FileEdit(label="output folder", mode="d")
     create_btn = PushButton(text="Create config file...")
@@ -157,14 +201,14 @@ def pipeline_widget(ask=None):
         if not path.is_file():
             return
         try:
-            cfg = json.load(open(path))
+            cfg = json.load(open(path, encoding="utf-8"))
         except ValueError as e:
             status.value = f"Cannot read {path.name}: {e}"
             return
-        if cfg.get('inputdir'):
-            inputdir.value = cfg['inputdir']
-        if cfg.get('outputdir'):
-            outputdir.value = cfg['outputdir']
+        for key, widget in (('inputdir', inputdir), ('outputdir', outputdir)):
+            folder = cfg.get(key)
+            if folder:                                       # relative folders: relative to the config file (buddy >= 0.6)
+                widget.value = str((path.parent / folder).resolve()) if not Path(folder).is_absolute() else folder
         status.value = f"Config: {path.name}"
         _show_done()
 
@@ -259,20 +303,6 @@ def pipeline_widget(ask=None):
     ticker = QTimer()
     ticker.setInterval(500)
     ticker.timeout.connect(_tick)
-
-    def _release_omnipose(exp):
-        """Drop the Omnipose networks and free the GPU when step 2 is done, so that step 3 loads the bud model
-        on a clean GPU (loading it next to the resident Omnipose models hung or crashed now and then). A later
-        step 2 loads Omnipose again."""
-        exp.cell_model = exp.nuclei_model = None
-        gc.collect()
-        try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.synchronize()
-                torch.cuda.empty_cache()
-        except Exception:
-            pass
 
     def _free_viewer_memory():
         """Close the layers in napari and drop the read-ahead cache of the Correct-images panel: a step-3 image
@@ -373,27 +403,14 @@ def pipeline_widget(ask=None):
         else:
             state['chain'] = []
 
-    def _preload_bud_model(exp, key):
-        """Load the bud model in the GUI thread, before the step's worker starts. Loading it from a worker thread
-        (the first CUDA call of that thread) stalled forever now and then on Windows; from the main thread it has
-        not. Done for step 3, and for step 2 when step 3 follows in the chain (Run 1-3)."""
-        if not exp.bud_classification['enabled'] or hasattr(exp, 'bud_model'):
-            return
-        if key == 'spots' or (key == 'segment' and 'spots' in state['chain']):
-            status.value = "Loading the bud model..."
-            from qtpy.QtWidgets import QApplication
-            QApplication.processEvents()
-            exp.init_bud_model()
-
     def _run_step(key):
         try:
             exp = _experiment()
-            _preload_bud_model(exp, key)
         except Exception as e:
             status.value = f"Cannot start: {e}"
             state['chain'] = []
             return
-        from buddy.rerun_check import select_images
+        from buddy.which_images import select_images
         if key == 'read':
             exp.create_image_list()
             if not exp.images:
@@ -440,19 +457,12 @@ def pipeline_widget(ask=None):
         prior = prior_seconds(_earlier(exp), pipeline.STEP_TIMES['segment'])
         estimate = Estimate({'segment': (len(todo), prior or DEFAULT_SECONDS['segment'])})
         yield ('progress', 'segment', 0, len(todo), f"Segment: {estimate.text()}", estimate.seconds_left())
-        if 'spots' in state['chain'] and exp.bud_classification['enabled'] and not hasattr(exp, 'bud_model'):
-            # Run 1-3: load the bud model now, before Omnipose, on an untouched GPU. Loading it in step 3, after
-            # Omnipose ran in another thread, stalled in the first CUDA call now and then (an idle, empty GPU;
-            # torch waits forever). The model is kept on the Experiment for step 3.
-            yield ('status', 'segment', "Segment: loading the bud model (for step 3)...")
-            exp.init_bud_model()
         if getattr(exp, 'cell_model', None) is None:
             yield ('status', 'segment', "Segment: loading Omnipose...")
             exp.init_omnipose()
         yield ('status', 'segment', f"Segment: {len(todo)} image(s) on the {'GPU' if exp.use_GPU else 'CPU'}")
         done, failed = yield from _serial('segment', 'segment', lambda f: pipeline.segment_image(f, exp),
                                           todo, estimate, 'Segment')
-        _release_omnipose(exp)
         yield _summary('segment', 'Segment', done, failed, len(todo), started)
 
     def _spots(todo):
@@ -475,17 +485,7 @@ def pipeline_widget(ask=None):
             if not hasattr(exp, 'bud_model'):
                 yield ('status', 'spots', "Spots: loading the bud model..." if exp.bud_classification['enabled']
                        else "Spots: running")
-                # loading has hung now and then (napari, after step 2): if it takes more than a minute, print
-                # the stack of every thread to the terminal, so the hang shows where it sits
-                import faulthandler, sys
-                try:                                   # sys.__stderr__: the real terminal, not napari's redirect
-                    faulthandler.dump_traceback_later(60, repeat=True, file=sys.__stderr__)
-                except Exception:
-                    pass
-                try:
-                    exp.init_bud_model()
-                finally:
-                    faulthandler.cancel_dump_traceback_later()
+                exp.init_bud_model()
                 estimate.restart_clock()
 
         def both(f):                       # 3a + 3b for one image
@@ -549,5 +549,7 @@ def pipeline_widget(ask=None):
     rows = []
     for key, _ in STEPS:
         rows += [buttons[key], step_status[key]]
+    if cfg_file.value and Path(str(cfg_file.value)).is_file():   # the example config: fill in its folders
+        _config_chosen()
     return Container(widgets=[cfg_file, inputdir, outputdir, create_btn, Label(value="Steps"), *rows, all_btn,
                               progress, stop_btn, status])

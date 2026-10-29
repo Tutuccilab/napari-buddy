@@ -1,31 +1,32 @@
 """
 napari widget to create and save a buddy pipeline config (.json).
 
-The saved file matches what ``buddy.experiment.Experiment.from_cfg_file``
-expects:
+The saved file is buddy's config layout (buddy >= 0.6: one block per pipeline step, see buddy/config.py and
+config_files/config_example.json):
 
     {
       "inputdir":  "...",
       "outputdir": "...",
       "if_already_processed": "ask",       # re-running a step: "ask" | "skip" | "overwrite"
-      "parameters": {
-          "organism":    "S.cerevisiae",     # or "E.coli"
-          "patch_size":  [200, 200],         # focus patch (y, x)
-          "sigma":       [0.75, 2.3, 2.3],   # background gaussian (z, yx, yx)
-          "scale":       [200, 65, 65],      # voxel size nm (z, yx, yx)
-          "spot_radius": [800, 120, 120],    # object radius nm (z, yx, yx)
-          "min_cell_area": 20,               # step 2: remove cells smaller than this (px)
-          "expand_px": 0,                    # step 2: grow cells by this many px
-          "remove_edge_cells": true,         # step 2: remove cells touching the image edge
-          "use_gpu": true,                   # Omnipose + bud model on the GPU (if available)
-          "gpu_spot_detection": true         # background filter, spot detection, decomposition on the GPU
-      },
-      "bud_classification": {"enabled": true, "model": "DIC_DAPI_only", "ash_channel": "ASH1CLB2",
-                             "overwrite_manual_corrections": false},
-      "channels": {
+      "channels": {                        # step 1
           "ASH1CLB2": {"filter": "CY5",  "mrna": "ASH1CLB2", "colormap": "red",  "threshold": 50},
           "DAPI":     {"filter": "DAPI", "mrna": "DAPI",     "colormap": "blue"}
-      }
+      },
+      "spots": {                           # step 3; decomposition (Big-FISH alpha, beta, gamma) is the same for every channel
+          "scale": [200, 65, 65], "spot_radius": [800, 120, 120], "sigma": [0.75, 2.3, 2.3], "patch_size": [200, 200],
+          "decomposition": {"alpha": 0.5, "beta": 2, "gamma": 1}
+      },
+      "segmentation": {                    # step 2: Omnipose (the Omnipose tab) + the clean-up (General tab)
+          "organism": "S.cerevisiae", "cell_model": "cyto2_omni", "nucleus_model": "nuclei", "tile": false,
+          "min_size": 10, "nuclei_min_size": 10,
+          "use_preset": true,              # true: the organism's Omnipose settings, cells / nuclei only show them
+          "cells": {"diameter": 50, "mask_threshold": -3, "flow_threshold": 1},
+          "nuclei": {"diameter": 0, "mask_threshold": 0, "flow_threshold": 0},
+          "min_cell_area": 20, "expand_px": 0, "remove_edge_cells": true
+      },
+      "hardware": {"use_gpu": true, "gpu_spot_detection": true},
+      "bud_classification": {"enabled": true, "model": "DIC_DAPI_only", "ash_channel": "ASH1CLB2",
+                             "overwrite_manual_corrections": false}
     }
 
 ``build_config`` / ``save_config`` are plain functions so a config can also be
@@ -35,18 +36,41 @@ import json
 from pathlib import Path
 
 from magicgui.widgets import (
-    Container, PushButton, Label, LineEdit, FileEdit, ComboBox, CheckBox, SpinBox,
+    CheckBox,
+    ComboBox,
+    Container,
+    FileEdit,
+    FloatSpinBox,
+    Label,
+    LineEdit,
+    PushButton,
+    SpinBox,
 )
 
 ORGANISMS = ["S.cerevisiae", "E.coli"]
 BUD_MODELS = ["DIC_DAPI_only", "with_ASH1CLB2"]
 IF_PROCESSED = ["ask", "skip", "overwrite"]
 COLORMAPS = ["gray", "red", "green", "blue", "magenta", "cyan", "yellow", "gold", "lime", "orange"]
+# the Omnipose presets of buddy (buddy/config.py), shown as the starting values of the Omnipose tab
+try:
+    from buddy.config import (
+        OMNIPOSE_NUCLEUS_PRESET,
+        OMNIPOSE_PRESETS,
+        SEGMENTATION_DEFAULTS,
+    )
+except ImportError:                                 # buddy < 0.5.0: no "segmentation" block
+    OMNIPOSE_PRESETS, OMNIPOSE_NUCLEUS_PRESET, SEGMENTATION_DEFAULTS = None, None, None
 
 
 # ----------------------------------------------------------------------
 # pure helpers (usable without napari)
 # ----------------------------------------------------------------------
+def _number(v):
+    """A spin box value as int when it is a whole number (so the file says 2, not 2.0)."""
+    v = float(v)
+    return int(v) if v.is_integer() else v
+
+
 def _parse_numbers(text, cast=float):
     """'200, 65,65' -> [200.0, 65.0, 65.0]; empty entries are dropped."""
     return [cast(x) for x in str(text).replace(" ", "").split(",") if x != ""]
@@ -55,14 +79,17 @@ def _parse_numbers(text, cast=float):
 def build_config(inputdir, outputdir, organism, patch_size, sigma, scale,
                  spot_radius, channels, min_cell_area=20, expand_px=0, remove_edge_cells=False,
                  use_gpu=True, gpu_spot_detection=True, bud_classification=None,
-                 if_already_processed="ask"):
+                 if_already_processed="ask", segmentation=None, decomposition=None):
     """
-    Assemble the config dict.
+    Assemble the config dict (buddy's file layout: one block per step).
 
     channels : iterable of (mrna, filter, colormap, threshold)
         Rows with an empty mrna are skipped. A blank/None threshold is omitted
         (Experiment then treats it as None).
     bud_classification : dict ("enabled", "model", "ash_channel", ...) or None (block left out)
+    segmentation : the Omnipose part of the "segmentation" block ("cell_model", "nucleus_model", "tile", "min_size",
+        "nuclei_min_size", "use_preset", "cells", "nuclei"; the Omnipose tab) or None (buddy's defaults, see buddy/config.py)
+    decomposition : {"alpha", "beta", "gamma"} of Big-FISH's decompose_dense, the same for every channel, or None (left out)
     """
     ch_dict = {}
     for mrna, filt, colormap, threshold in channels:
@@ -78,19 +105,22 @@ def build_config(inputdir, outputdir, organism, patch_size, sigma, scale,
         "inputdir": str(inputdir),
         "outputdir": str(outputdir),
         "if_already_processed": if_already_processed,
-        "parameters": {
+        "channels": ch_dict,
+        "segmentation": {
             "organism": organism,
-            "patch_size": [int(v) for v in _parse_numbers(patch_size, float)],
-            "sigma": _parse_numbers(sigma, float),
-            "scale": _parse_numbers(scale, float),
-            "spot_radius": _parse_numbers(spot_radius, float),
+            **(segmentation or {}),
             "min_cell_area": int(min_cell_area),
             "expand_px": int(expand_px),
             "remove_edge_cells": bool(remove_edge_cells),
-            "use_gpu": bool(use_gpu),
-            "gpu_spot_detection": bool(gpu_spot_detection),
         },
-        "channels": ch_dict,
+        "spots": {
+            "scale": _parse_numbers(scale, float),
+            "spot_radius": _parse_numbers(spot_radius, float),
+            "sigma": _parse_numbers(sigma, float),
+            "patch_size": [int(v) for v in _parse_numbers(patch_size, float)],
+            **({"decomposition": dict(decomposition)} if decomposition else {}),
+        },
+        "hardware": {"use_gpu": bool(use_gpu), "gpu_spot_detection": bool(gpu_spot_detection)},
     }
     if bud_classification is not None:
         cfg["bud_classification"] = {"overwrite_manual_corrections": False, **bud_classification}
@@ -98,13 +128,18 @@ def build_config(inputdir, outputdir, organism, patch_size, sigma, scale,
 
 
 def save_config(path, cfg):
-    """Write cfg to path as JSON, forcing a .json suffix. Returns the Path."""
+    """Write cfg to path as JSON (buddy's readable layout), forcing a .json suffix. Returns the Path."""
     out = Path(str(path))
     if out.suffix.lower() != ".json":
         out = out.with_suffix(".json")
     out.parent.mkdir(parents=True, exist_ok=True)
-    with open(out, "w") as f:
-        json.dump(cfg, f, indent=2)
+    try:
+        from buddy.config import to_json
+        text = to_json(cfg)
+    except ImportError:                                 # buddy < 0.6
+        text = json.dumps(cfg, indent=2, ensure_ascii=False)
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(text + "\n")
     return out
 
 
@@ -113,14 +148,20 @@ def save_config(path, cfg):
 # ----------------------------------------------------------------------
 def config_widget():
     """Fill in the fields and save a buddy config .json."""
-    inputdir  = FileEdit(label="input dir",  mode="d")
-    outputdir = FileEdit(label="output dir", mode="d")
+    from ._pipeline_widget import example_paths
+    example = example_paths()                          # the example set, when buddy's repo is next to this one
+    inputdir  = FileEdit(label="input dir",  mode="d", value=example.get("inputdir", ""))
+    outputdir = FileEdit(label="output dir", mode="d", value=example.get("outputdir", ""))
     organism  = ComboBox(label="organism", choices=ORGANISMS, value=ORGANISMS[0])
 
     patch_size  = LineEdit(label="patch_size (y,x)",        value="200,200")
     sigma       = LineEdit(label="sigma (z,yx,yx)",         value="0.75,2.3,2.3")
     scale       = LineEdit(label="scale nm (z,yx,yx)",      value="200,65,65")
     spot_radius = LineEdit(label="spot_radius nm (z,yx,yx)", value="800,120,120")
+    # decomposition of dense regions (Big-FISH decompose_dense), the same for every channel
+    decomposition = {"alpha": FloatSpinBox(label="alpha: molecule intensity / reference spot", value=0.5, min=0, max=1, step=0.05),
+                     "beta": FloatSpinBox(label="beta: dense region >= beta x reference spot", value=2, min=0, max=100, step=0.5),
+                     "gamma": FloatSpinBox(label="gamma: denoising filter width (x spot radius)", value=1, min=0, max=10, step=0.5)}
 
     header = Label(value="Channels (in order of acquisition):  mRNA | filter | colormap | threshold (blank = None)")
     channels_box = Container(layout="vertical", labels=False)
@@ -179,9 +220,8 @@ def config_widget():
     # re-running steps on images that were processed with other settings
     if_processed  = ComboBox(label="if already processed", choices=IF_PROCESSED, value="ask")
 
-    save_path = FileEdit(label="save as", mode="w", filter="*.json")
-    save_btn  = PushButton(text="Save config")
-    status    = Label(value="")
+    # ---- Omnipose tab: the "segmentation" block (buddy >= 0.5.0) ----------------------------------
+    omni = _omnipose_tab(organism)
 
     def _on_save(*_):
         try:
@@ -195,27 +235,119 @@ def config_widget():
                                min_cell_area=min_cell_area.value, expand_px=expand_px.value,
                                remove_edge_cells=remove_edge.value, use_gpu=use_gpu.value,
                                gpu_spot_detection=gpu_spots.value, bud_classification=bud,
-                               if_already_processed=if_processed.value)
+                               if_already_processed=if_processed.value, segmentation=omni.block(),
+                               decomposition={k: _number(w.value) for k, w in decomposition.items()})
             if not cfg["channels"]:
                 status.value = "add at least one channel with an mRNA name"
                 return
             out = save_config(save_path.value, cfg)
             status.value = f"saved: {out}"
-        except Exception as e:  # surface the error in the widget instead of crashing
+        except Exception as e:  # noqa: BLE001 - surface the error in the widget instead of crashing
             status.value = f"error: {e}"
+
+    save_path = FileEdit(label="save as", mode="w", filter="*.json")
+    save_btn  = PushButton(text="Save config")
+    status    = Label(value="")
 
     save_btn.clicked.connect(_on_save)
 
-    return Container(
+    main = Container(
         widgets=[
             inputdir, outputdir, organism,
             patch_size, sigma, scale, spot_radius,
             header, channels_box, add_btn,
-            Label(value="Segmentation (step 2)"), min_cell_area, expand_px, remove_edge,
+            Label(value="Decomposition of dense regions (step 3, all channels)"), *decomposition.values(),
+            Label(value="Mask clean-up (step 2)"), min_cell_area, expand_px, remove_edge,
             Label(value="GPU"), use_gpu, gpu_spots,
             Label(value="Bud classification"), bud_enabled, bud_model, ash_channel,
             Label(value="Re-running steps"), if_processed,
-            save_path, save_btn, status,
         ],
         layout="vertical",
     )
+    bottom = Container(widgets=[save_path, save_btn, status], layout="vertical")
+
+    # two tabs (General: everything but Omnipose; Omnipose) above one save row, so the panel stays short
+    from qtpy.QtWidgets import QTabWidget, QVBoxLayout, QWidget
+    tabs = QTabWidget()
+    from ._tabs import _packed
+    tabs.addTab(_packed(main.native), "General")
+    tabs.addTab(_packed(omni.container.native), "Omnipose")
+    panel = QWidget()
+    layout = QVBoxLayout(panel)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(tabs)
+    layout.addWidget(bottom.native)
+    panel._magicgui = (main, omni.container, bottom)      # keep the magicgui widgets alive
+    return panel
+
+
+class _omnipose_tab:
+    """
+    The Omnipose part of the "segmentation" block: models, tiling, the smallest cell / nucleus and the main Omnipose
+    settings of the cells and the nuclei. The fields start at buddy's presets (for the organism chosen on the
+    General tab); block() returns the cells / nuclei settings only where they differ from them, so a config made
+    here stays small and follows buddy's defaults otherwise.
+    """
+    CELL_KEYS = ("diameter", "mask_threshold", "flow_threshold")
+    NUCLEUS_KEYS = ("diameter", "mask_threshold", "flow_threshold")
+    _TUNE = "uncheck to tune the cells / nuclei settings below (saved as use_preset false)"
+
+    def __init__(self, organism_box):
+        defaults = SEGMENTATION_DEFAULTS or {"cell_model": "cyto2_omni", "nucleus_model": "nuclei", "tile": False}
+        self.organism_box = organism_box
+        self.cell_model = LineEdit(label="cell model", value=defaults["cell_model"])
+        self.nucleus_model = LineEdit(label="nucleus model", value=defaults["nucleus_model"])
+        self.tile = CheckBox(text="tile: run the networks on tiles (less GPU memory; set on 'CUDA out of memory')",
+                             value=bool(defaults["tile"]))
+        self.min_size = SpinBox(label="min_size: smallest cell (px)", value=10, min=0, max=100000)
+        self.nuclei_min_size = SpinBox(label="nuclei_min_size: smallest nucleus (px)", value=10, min=0, max=100000)
+        self.use_preset = CheckBox(text="use the organism's preset (General tab) - " + self._TUNE, value=True)
+        self.cells = {k: FloatSpinBox(label=f"cells: {k}", min=-10, max=10000, step=0.5) for k in self.CELL_KEYS}
+        self.nuclei = {k: FloatSpinBox(label=f"nuclei: {k}", min=-10, max=10000, step=0.5) for k in self.NUCLEUS_KEYS}
+        self.reset_btn = PushButton(text="reset to buddy's presets")
+        self.reset_btn.clicked.connect(lambda *_: self.reset())
+        self.container = Container(
+            widgets=[Label(value="Omnipose (step 2) - the \"segmentation\" block of the config file"),
+                     self.cell_model, self.nucleus_model, self.tile, self.min_size, self.nuclei_min_size,
+                     self.use_preset,
+                     Label(value="Cells"), *self.cells.values(),
+                     Label(value="Nuclei"), *self.nuclei.values(),
+                     self.reset_btn,
+                     Label(value="Other Omnipose settings: edit the saved file (buddy/config.py lists them).")],
+            layout="vertical")
+        self.reset()
+        self._lock()
+        organism_box.changed.connect(lambda *_: self.reset())
+        self.use_preset.changed.connect(lambda *_: self._lock())
+
+    def _lock(self):
+        """The cells / nuclei fields follow the preset while use_preset is on (and show its values)."""
+        on = bool(self.use_preset.value)
+        if on:
+            self.reset()
+        for w in (*self.cells.values(), *self.nuclei.values(), self.reset_btn):
+            w.enabled = not on
+
+    def presets(self):
+        organism = self.organism_box.value
+        cells = (OMNIPOSE_PRESETS or {}).get(organism) or {"diameter": 50, "mask_threshold": -3, "flow_threshold": 1}
+        nuclei = OMNIPOSE_NUCLEUS_PRESET or {"diameter": 0, "mask_threshold": 0, "flow_threshold": 0}
+        return cells, nuclei
+
+    def reset(self):
+        cells, nuclei = self.presets()
+        for k, w in self.cells.items():
+            w.value = float(cells[k])
+        for k, w in self.nuclei.items():
+            w.value = float(nuclei[k])
+
+    def block(self):
+        """
+        The "segmentation" block as config_example.json has it: models, tile, min sizes, use_preset and the three
+        cells / nuclei settings (the preset's values while use_preset is on; buddy ignores them then).
+        """
+        return {"cell_model": self.cell_model.value.strip(), "nucleus_model": self.nucleus_model.value.strip(),
+                "tile": bool(self.tile.value), "min_size": int(self.min_size.value), "nuclei_min_size": int(self.nuclei_min_size.value),
+                "use_preset": bool(self.use_preset.value),
+                "cells": {k: _number(w.value) for k, w in self.cells.items()},
+                "nuclei": {k: _number(w.value) for k, w in self.nuclei.items()}}

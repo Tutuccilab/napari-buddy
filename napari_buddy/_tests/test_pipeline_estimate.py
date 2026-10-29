@@ -1,6 +1,10 @@
 import json
 
-from napari_buddy._pipeline_widget import Estimate, format_seconds, prior_seconds
+from napari_buddy._pipeline_widget import (
+    Estimate,
+    format_seconds,
+    prior_seconds,
+)
 
 
 def test_estimate_starts_from_prior_then_follows_measurements():
@@ -27,3 +31,13 @@ def test_prior_seconds(tmp_path):
     assert prior_seconds(sorted(tmp_path.glob("*.json")), ["x", "y"]) == 21
     assert prior_seconds([], ["x"]) is None
     assert format_seconds(30) == "30 s" and format_seconds(600) == "10 min"
+
+
+def test_pipeline_panel_opens_with_the_example_config(qapp):
+    """The panel starts at buddy's config_example.json and fills in its folders (the start-up call must not fail)."""
+    from napari_buddy._pipeline_widget import _example_config, pipeline_widget
+    panel = pipeline_widget()
+    example = _example_config()
+    if example is not None:
+        assert str(panel[0].value) == str(example)
+        assert "YET572 BR4" in str(panel[1].value)

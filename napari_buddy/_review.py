@@ -25,7 +25,8 @@ from pathlib import Path
 
 import numpy as np
 
-from ._bud_links import BUD     # bud-mask value, defined once in buddy
+from ._bud_links import BUD  # bud-mask value, defined once in buddy
+
 _DOCKED = {}    # (id(viewer), panel name) -> dock widget, so each panel is added to a viewer only once
 _PANELS = {}    # id(viewer) -> the Correct images panel
 _PREFETCH = {}  # img.json path -> (file times, future with the prepared layers), see _prefetch
@@ -180,9 +181,9 @@ def _update_shapes(layer, data, kw):
 def _bud_tools():
     """buddy's mask tools for buds (buddy.buds.bud_tools; buddy.bud_tools in buddy 0.1.0)."""
     try:
-        from buddy.buds import bud_tools          # buddy >= 0.2.0
+        from buddy.buds import bud_tools  # buddy >= 0.2.0
     except ImportError:
-        from buddy import bud_tools               # buddy 0.1.0
+        from buddy import bud_tools  # buddy 0.1.0
     return bud_tools
 
 
@@ -224,7 +225,7 @@ def open_for_correction(exp, i, max_project=True, clear=True):
 
 
 def _json_path(exp, i):
-    from buddy.rerun_check import _json_of
+    from buddy.which_images import _json_of
     return _json_of(exp, list(exp.images.values())[i], 'read')
 
 
@@ -273,12 +274,13 @@ def _take_prefetched(path, max_project):
 def _open(exp, i, max_project=True, clear=True):
     """open_for_correction without printing; returns (my_image, viewer, summary, timing)."""
     import time
+
     import napari
     import pandas as pd
     from buddy.image import Image
-    from ._reader import read_smfish_json
-    from ._layer_groups import layer_groups_widget
+
     from ._bud_links import update_links
+    from ._layer_groups import layer_groups_widget
 
     images = list(exp.images.values())
     my_image = Image.from_dict(images[i], exp)
@@ -333,7 +335,7 @@ def _save(viewer, my_image):
     bt = _bud_tools()
     assign_buds_to_mothers, merge_buds_into_mothers = bt.assign_buds_to_mothers, bt.merge_buds_into_mothers
     from ._bud_links import update_links
-    from ._bud_widget import apply_drawn_lines, LINKS_LAYER
+    from ._bud_widget import LINKS_LAYER, apply_drawn_lines
 
     applied = ''
     if LINKS_LAYER in viewer.layers and len(viewer.layers[LINKS_LAYER].data):   # lines drawn but not applied
@@ -373,7 +375,7 @@ def review_images(exp, start=0, max_project=True):
         skip           open the next image without saving
     Returns nothing (so Jupyter does not show a picture of the panel under the cell).
     """
-    from magicgui.widgets import Container, PushButton, Label
+    from magicgui.widgets import Container, Label, PushButton
 
     n = len(exp.images)
     state = {}
@@ -424,6 +426,7 @@ def correct_images_widget():
     From a notebook, review_images(exp) does the same.
     """
     import json
+
     from magicgui.widgets import Container, FileEdit, Label, PushButton
 
     cfg_file = FileEdit(label="config file", mode="r", filter="*.json")
@@ -462,7 +465,7 @@ def correct_images_widget():
         if not exp.images:
             status.value = f"No images found in {exp.inputdir}"
             return
-        from buddy.rerun_check import _json_of
+        from buddy.which_images import _json_of
         n_done = sum(_json_of(exp, item, "read").is_file() for item in exp.images.values())
         status.value = f"{len(exp.images)} image(s), {n_done} processed - see the Correct images panel"
         review_images(exp, start=0)

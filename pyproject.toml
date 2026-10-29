@@ -17,15 +17,15 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
-# Capped at <3.11 to match buddy: this plugin depends on buddy, which
-# depends on omnipose, which only works up to Python 3.10.11.
-requires-python = ">=3.9,<3.11"
+# Same range as buddy (3.12 is what buddy's installers use; 3.13 has no PyTorch 2.5.1).
+requires-python = ">=3.10,<3.13"
 dependencies = [
-    "numpy<2",          # match buddy; numpy 2.0 breaks the scientific stack
+    "numpy<3",          # match buddy (its constraints pin 1.26; numpy 2 tested)
     "magicgui",
     "qtpy",
     "napari",
@@ -35,7 +35,7 @@ dependencies = [
     # buddy is the sibling package, installed editable from its own repo -
     # it is NOT on PyPI, so install buddy FIRST, then this plugin. pip will
     # then see the requirement already satisfied instead of hitting PyPI.
-    "buddy",
+    "buddy>=0.6",       # 0.6: the config layout this plugin writes (one block per step)
 ]
 
 [project.optional-dependencies]
@@ -44,7 +44,9 @@ testing = [
     "pytest-qt",  # https://pytest-qt.readthedocs.io/en/latest/  (napari's make_napari_viewer fixture)
     "tifffile",   # the tests read the test field's stacks
     "napari",
-    "pyqt6",  # was pyqt5 - buddy's env uses pyqt6; mixing the two conflicts
+    # the Qt backend buddy's env has (pyqt6; pyqt5 on Linux) - mixing the two conflicts
+    "pyqt6; sys_platform != 'linux'",
+    "pyqt5; sys_platform == 'linux'",
 ]
 
 [project.entry-points."napari.manifest"]

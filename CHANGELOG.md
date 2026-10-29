@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.4.0 (2026-10-29)
+- Writes buddy 0.6's config layout: one block per step (`channels`, `segmentation`, `spots`, `hardware`, ...) instead
+  of the `"parameters"` grab-bag, saved in buddy's readable format (`buddy.config.to_json`). Needs buddy >= 0.6.
+- *Create config file*: the tabs are **General** and **Omnipose** (no longer "Config" inside "Config"); the Omnipose
+  tab also has `min_size` / `nuclei_min_size` and the switch *use the organism's preset* (buddy 0.6's `use_preset`:
+  on, the cells / nuclei fields show the preset and are locked; off, they are editable and saved with
+  `use_preset: false`). General has the decomposition settings `alpha`, `beta`, `gamma` (`spots.decomposition`,
+  the same for every channel).
+- *Spot tuning* → Detect: the "LoG filtered" and "local maxima" layers are added hidden (they are only kept for
+  Threshold, which re-thresholds them without recomputing); the spots layer is what you see.
+- *Spot tuning* → Decompose: the dense regions are 3D points (on their z plane, like the spots) drawn as cyan
+  rings instead of filled 2D discs, so the spots inside stay visible; nb_rna and area are in the layer's features.
+  The layer names (`thr=...`) of Detect / Threshold / Decompose no longer change when another detection follows
+  (the layers shared one metadata dict).
+- Imports buddy 0.6 names directly (`which_images`, `spots.gpu_detection`); the fallbacks to older buddy names are gone.
+- The panels sit at the top of their tabs instead of being stretched over the tab's height (no more empty bands
+  between the fields, e.g. on the Omnipose tab).
+- Pre-filled with the example set when buddy's repo is next to this one: *Create config file* (input / output
+  folder), *Spot tuning* → Read image (config, .vsi and DIC file of the first image).
+- *buddy pipeline*: the config file field starts at buddy's `config_files/config_example.json` (the example set),
+  so the example runs without choosing anything; relative `inputdir` / `outputdir` in a config are taken relative
+  to the config file, as buddy does.
+
+## 0.3.2 (2026-10-28)
+- *Create config file* has two tabs: **Config** (as before) and **Omnipose**, which writes buddy 0.5.0's
+  `"segmentation"` block (cell and nucleus model, `tile` for small GPUs, the main Omnipose settings of cells and
+  nuclei, starting at buddy's presets for the chosen organism; only changed values are written). Works with buddy
+  up to 0.5.x.
+- README: installation is described in buddy's INSTALL.md only.
+- Python 3.10-3.12 (installed with buddy 0.5.2 on 3.12), numpy 2 allowed; the testing extra takes pyqt5 on Linux like buddy.
+
 ## 0.3.1 (2026-10-20)
 - The layer dropdowns of the tabbed panels (e.g. *img_layer* in Spot tuning → Filter) follow the layer list again:
   new, removed, reordered and renamed layers show up without reopening the dock. napari refreshes the dropdowns of

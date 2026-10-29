@@ -9,29 +9,15 @@ filtering → detection → thresholding → decomposition) with live sliders, l
 buddy results (`img.json`) as layers, and correct mother/bud assignments by
 hand.
 
-# Download code and example data
-Go to https://doi.org/10.5281/zenodo.22900927 to download napari, napari-buddy and some test data. 
-The folder structure of the zipped file should allow you to directly start with the tutorial after installation.
-Note: newer versions of the code can be downloaded by cloning this repo.
-
 ## Installation
 
-`napari-buddy` depends on **buddy** (not on PyPI), so install buddy **first**,
-then this plugin, into the same conda environment:
+napari-buddy is installed together with buddy by buddy's installer (`install.ps1` on Windows, `install.sh` on
+macOS / Linux, with this repo next to the buddy repo). How to install, GPU set-up and troubleshooting:
+[buddy/INSTALL.md](https://github.com/Tutuccilab/buddy/blob/main/INSTALL.md). To install only the plugin into an
+existing buddy environment: `python -m pip install -e .` from this folder.
 
-    # in your activated buddy env, from the buddy repo root:
-    python -m pip install -e ".[test,napari,notebooks]"
-
-    # then, from this plugin's repo root:
-    python -m pip install -e .
-
-Requires Python 3.9–3.10 (not 3.11+, because buddy's omnipose dependency is
-capped there). Use `python -m pip` so the install lands in the active env.
-See the [buddy](https://github.com/Tutuccilab/buddy) install guide for the full
-environment setup and troubleshooting.
-
-**Versions:** napari-buddy 0.2.0 works with buddy 0.1.0 up to 0.3.x (the cell-cycle layer needs buddy 0.3.0). Both packages warn when the other one is too old
-or too new; update both with `git pull` and `python -m pip install -e .` in each repo.
+**Versions:** napari-buddy 0.3.x works with buddy 0.3.0 up to 0.5.x. Both packages warn when the other one is too
+old or too new; update both with `git pull` and `python -m pip install -e .` in each repo.
 
 ## Usage
 
@@ -41,15 +27,16 @@ Launch napari with the plugin installed:
 
 The plugin's widgets appear under **Plugins → Napari Buddy**:
 
-- **buddy pipeline** — run the whole buddy pipeline from napari: choose a config file (or **Create config
-  file...**) and the input / output folders, then press the steps in order: 1 Read, 2 Segment, 3 Spots + buds,
+- **buddy pipeline** — run the whole buddy pipeline from napari: choose a config file (the field starts at buddy's
+  `config_files/config_example.json`, the example set; or **Create config file...**) and the input / output folders, then press the steps in order: 1 Read, 2 Segment, 3 Spots + buds,
   4 Check and correct (opens the Correct images panel), 5 Reassign spots; **Run 1-3** runs the automatic steps one
   after the other. Starting a step closes the layers in napari to free memory. Steps run in the background with a
   progress bar and a time estimate (from earlier runs, then from this run); **Stop after this image** stops a
   step cleanly. Images already processed with the same settings are skipped; for images processed with other
   settings a yes/no question lists what changed. Needs buddy installed in the same environment.
-- **Create config file** — build and save a buddy pipeline config (`.json`): channels, detection
-  parameters, segmentation post-processing, GPU use, bud classification and re-run behaviour.
+- **Create config file** — build and save a buddy pipeline config (`.json`, one block per step): the **General**
+  tab holds the folders, channels, spot settings, mask clean-up, GPU use, bud classification and re-run behaviour,
+  the **Omnipose** tab the segmentation networks and their settings.
 - **Read in VSI file** — load a raw VSI image (DIC + channels) into napari.
 - **Filter / Detect / Threshold / Decompose spots** — tune spot-detection
   parameters interactively before running batch detection in buddy.

@@ -25,7 +25,7 @@ class _TabPage:
         return self.tabs
 
     def activate(self):
-        self.tabs.setCurrentWidget(self.native)
+        self.tabs.setCurrentWidget(self.native.parentWidget() or self.native)
         dock = self.tabs.parentWidget()
         while dock is not None and not hasattr(dock, "setFloating"):      # up to the QDockWidget
             dock = dock.parentWidget()
@@ -51,6 +51,17 @@ def _sync_layer_choices(widget, layers):
     layers.events.inserted.connect(lambda event: event.value.events.name.connect(widget.reset_choices))
 
 
+def _packed(native):
+    """The widget at the top of its tab instead of stretched over the tab's height (no empty bands between fields)."""
+    from qtpy.QtWidgets import QVBoxLayout, QWidget
+    page = QWidget()
+    layout = QVBoxLayout(page)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(native)
+    layout.addStretch(1)
+    return page
+
+
 def _tabbed(pages, register=(), viewer=None):
     """
     A QTabWidget with one tab per (title, factory). register: (dock name, tab title) pairs whose pages are
@@ -69,7 +80,7 @@ def _tabbed(pages, register=(), viewer=None):
     for title, make in pages:
         widget = make()
         native = getattr(widget, "native", widget)
-        tabs.addTab(native, title)
+        tabs.addTab(_packed(native), title)
         natives[title] = native
         if viewer is not None:
             _sync_layer_choices(widget, viewer.layers)
@@ -90,7 +101,17 @@ def pipeline_tabs():
 def spot_tuning_tabs():
     """Plugins > Napari Buddy > Spot tuning: read an image, then filter, detect, threshold and decompose."""
     from . import _widget
-    return _tabbed([("Read image", _widget.read_in_vsi_widget),
+    from ._pipeline_widget import example_paths
+
+    def read_image():
+        widget = _widget.read_in_vsi_widget()
+        example = example_paths()                      # start at the example set when it is there
+        for field, key in (("cfg_file", "config"), ("vsi_file", "vsi"), ("cell_file", "dic")):
+            if example.get(key):
+                getattr(widget, field).value = example[key]
+        return widget
+
+    return _tabbed([("Read image", read_image),
                     ("Filter", _widget.background_filtering_magic_widget),
                     ("Detect", _widget.spot_detection_magic_widget),
                     ("Threshold", _widget.spot_thresholding_magic_widget),

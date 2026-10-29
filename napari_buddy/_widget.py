@@ -1,23 +1,18 @@
 """
 Widgets to call Big-FISH functions. When PyTorch can use a GPU, the slow filtering steps (background filter,
-Laplacian-of-Gaussian + local maxima, decomposition denoising) run on the GPU with buddy.spots.gpu (buddy.gpu_filters in buddy 0.1.0), which
+Laplacian-of-Gaussian + local maxima, decomposition denoising) run on the GPU with buddy.spots.gpu_detection, which
 gives the same result as Big-FISH; otherwise Big-FISH runs on the CPU.
 """
 
-import napari
 from typing import List
 
+import napari
+from bigfish import detection, stack
+from buddy.experiment import Experiment
+from buddy.image import Image
 from magicgui import magic_factory
 
-from buddy.image import Image
-from buddy.experiment import Experiment
-
-from bigfish import detection
-from bigfish import stack
-try:
-    from buddy.spots import gpu as gpu_spots              # buddy >= 0.2.0
-except ImportError:
-    from buddy import gpu_filters as gpu_spots            # buddy 0.1.0
+from buddy.spots import gpu_detection as gpu_spots
 
 
 def _on_gpu(gpu, cpu):
@@ -31,11 +26,11 @@ def _on_gpu(gpu, cpu):
             torch.cuda.empty_cache()
     return cpu()
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from skimage import io
-
 
 
 @magic_factory(
@@ -48,6 +43,7 @@ def read_in_vsi_widget(
         vsi_file=Path.home(),
         cell_file=Path.home(),
 ) -> List[napari.types.LayerDataTuple]:
+    """Read one microscope image (the .vsi and its DIC file) with the config's channels; fields start at the example set."""
 
     img = Image.from_dict(params={ "vsi_file": vsi_file, "cell_file": cell_file }, exp=Experiment.from_cfg_file(cfg_file=cfg_file))
     img.read_image()   # -> img.mrna[ch]['data']
@@ -127,7 +123,7 @@ def spot_detection_magic_widget(
         cell_masks = viewer.layers['DIC masks'].data
         features['label'], features['in_cell'] = get_labels(cell_masks, spots)
 
-    spots_metadata = img_layer.metadata
+    spots_metadata = dict(img_layer.metadata)      # a copy: the layers must not share one dict
     channel = spots_metadata['channel']
     spots_metadata.update({
         'threshold': threshold,
@@ -135,9 +131,10 @@ def spot_detection_magic_widget(
         'spot_radius': (spot_radius_z, spot_radius_yx, spot_radius_yx)
     })
 
+    # the LoG image and the local maxima are kept (hidden) so that Threshold can re-threshold without recomputing
     return [
-        (rna_log, { 'name': f'{channel} LoG filtered', 'metadata': img_layer.metadata }, 'image'),
-        (mask, { 'name': f'{channel} local maxima', 'metadata': img_layer.metadata }, 'labels'),
+        (rna_log, { 'name': f'{channel} LoG filtered', 'metadata': img_layer.metadata, 'visible': False }, 'image'),
+        (mask, { 'name': f'{channel} local maxima', 'metadata': img_layer.metadata, 'visible': False }, 'labels'),
         (spots, {
             'name': f'{channel} spots detected thr={threshold}',
             'features': features,
@@ -146,7 +143,7 @@ def spot_detection_magic_widget(
             'size': 10,
             'border_width': 0.1,
             'border_color': 'in_cell',
-            'border_color_cycle': ['cyan', 'red'] if features.iloc[0]['in_cell'] == True else ['red', 'cyan'],
+            'border_color_cycle': _border_cycle(features),
             'face_color': 'transparent',
             'opacity': 0.5,
             'out_of_slice_display': True
@@ -162,7 +159,7 @@ def threshold_spots(rna_log, mask, threshold):
     spots_with_intensities = np.concatenate((spots, log_intensities), axis=1)
     features = pd.DataFrame(spots_with_intensities, columns=['z', 'y', 'x', 'intensity_LoG'])
     features['label'] = -1
-    features['in_cell'] = 1
+    features['in_cell'] = pd.Series([IN_CELL] * len(features), dtype='string')
 
     return spots, features
 
@@ -175,7 +172,7 @@ def spot_thresholding_magic_widget(
     viewer: "napari.Viewer",
     img_layer: "napari.layers.Points", threshold: float=50,
 ) -> "napari.types.LayerDataTuple":
-    spots_metadata = img_layer.metadata
+    spots_metadata = dict(img_layer.metadata)      # a copy: the layers must not share one dict
     spots_metadata.update({ 'threshold': threshold})
     channel = spots_metadata['channel']
 
@@ -199,7 +196,7 @@ def spot_thresholding_magic_widget(
         'border_color': 'in_cell',
         # this breaks if we don't have features, ie when reading img.json
         # actually we do have features when reading img.json
-        'border_color_cycle': ['cyan', 'red'] if features.iloc[0]['in_cell'] == True else ['red', 'cyan'],
+        'border_color_cycle': _border_cycle(features),
         'face_color': 'transparent',
         'opacity': 0.5,
         'out_of_slice_display': True
@@ -207,11 +204,19 @@ def spot_thresholding_magic_widget(
             'points')
 
 
+IN_CELL, OUTSIDE = 'in a cell', 'outside'           # the in_cell feature of the spot layers (text, so napari takes it as
+                                                    # categorical without the "looks like categorical data" warning)
+
+
 def get_labels(cell_masks, spots):
     labels = [ cell_masks[y, x] for (y, x) in spots[:, 1:3] ]
-    in_cell = [ 0 if l == 0 else 1 for l in labels ]
+    in_cell = [ OUTSIDE if l == 0 else IN_CELL for l in labels ]
+    return pd.Series(labels, dtype='int64'), pd.Series(in_cell, dtype='string')
 
-    return pd.Series(labels, dtype='int64'), pd.Series(in_cell, dtype='int64')
+
+def _border_cycle(features):
+    """cyan for spots in a cell, red outside - in the order napari meets the values (first row first)."""
+    return ['cyan', 'red'] if features.iloc[0]['in_cell'] == IN_CELL else ['red', 'cyan']
 
 
 @magic_factory(
@@ -222,7 +227,7 @@ def spot_decomposition_magic_widget(
     point_layer: "napari.layers.Points",
 ) -> List[napari.types.LayerDataTuple]:
     spots = point_layer.data
-    metadata = point_layer.metadata
+    metadata = dict(point_layer.metadata)           # a copy: the layers must not share one dict
     channel = metadata['channel']
 
     rna = viewer.layers[f'{channel}'].data
@@ -238,7 +243,7 @@ def spot_decomposition_magic_widget(
 
     features = pd.DataFrame(decomp_spots, columns=['z', 'y', 'x'])
     features['label'] = -1
-    features['in_cell'] = 1
+    features['in_cell'] = pd.Series([IN_CELL] * len(features), dtype='string')
     # if we have DIC masks, we add the cell labels to the spot
     # features for display purposes
     if 'DIC masks' in viewer.layers:
@@ -247,14 +252,17 @@ def spot_decomposition_magic_widget(
 
     metadata.update({ 'decomposed': 1 })
 
+    regions = pd.DataFrame(dense_regions[:, 3:5], columns=['nb_rna', 'area'])
     return [
-        (dense_regions[:, 1:3], {
+        (dense_regions[:, 0:3], {                      # z, y, x: shown on their own z plane, as rings around the spots
             'name': f'{channel} dense regions thr={metadata["threshold"]}',
-            'symbol': 'disc',
-            'size': 10,
-            'border_width': 0,
-            'face_color': 'cyan',
-            'opacity': 0.5
+            'features': regions,
+            'symbol': 'ring',
+            'size': 16,
+            'border_width': 0.15,
+            'border_color': 'cyan',
+            'face_color': 'transparent',
+            'opacity': 0.8
         },
          'points'),
         (decomp_spots, {
@@ -265,7 +273,7 @@ def spot_decomposition_magic_widget(
             'size': 10,
             'border_width': 0.1,
             'border_color': 'in_cell',
-            'border_color_cycle': ['cyan', 'red'] if features.iloc[0]['in_cell'] == True else ['red', 'cyan'],
+            'border_color_cycle': _border_cycle(features),
             'face_color': 'transparent',
             'opacity': 0.5
         },
