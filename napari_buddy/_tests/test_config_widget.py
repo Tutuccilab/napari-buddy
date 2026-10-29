@@ -34,11 +34,22 @@ def test_build_config_writes_one_block_per_step():
                                        "cells": {"diameter": 40}, "nuclei": {}}
 
 
-def test_save_config_is_readable(tmp_path):
+def test_save_config_is_readable_and_complete(tmp_path):
+    """The saved file has every block of config_example.json, its comments, and the panel's values."""
     cfg = build_config("in", "out", "S.cerevisiae", "200,200", "0.75,2.3,2.3", "200,65,65", "800,120,120",
-                       [("DAPI", "DAPI", "blue", "")])
+                       [("DAPI", "DAPI", "blue", "")], segmentation={"tile": True})
     text = save_config(tmp_path / "c", cfg).read_text(encoding="utf-8")
-    assert '"scale": [200.0, 65.0, 65.0]' in text and json.loads(text)["spots"]["scale"] == [200, 65, 65]
+    saved = json.loads(text)
+    assert '"scale": [200.0, 65.0, 65.0]' in text and saved["spots"]["scale"] == [200, 65, 65]
+    assert saved["segmentation"]["tile"] is True and saved["segmentation"]["use_preset"] is False
+    pytest.importorskip("buddy.config")
+    from buddy.config import example_config
+    example = example_config()
+    assert list(saved) == list(example)                                  # same blocks, same order
+    assert "Create config file" in saved["_about"] and saved["segmentation"]["_about"] == example["segmentation"]["_about"]
+    assert saved["cell_cycle"]["g1_max_ash"] == example["cell_cycle"]["g1_max_ash"]   # a block the panel has no fields for
+    assert saved["experiments"] == []                                    # not the example's strains
+    assert "cell_flags" not in saved
 
 
 def test_omnipose_tab_use_preset(qapp):

@@ -160,6 +160,7 @@ class Estimate:
 STEPS = [('read', '1  Read images'), ('segment', '2  Segment cells + nuclei'),
          ('spots', '3  Spots + buds + counts'), ('review', '4  Check and correct'),
          ('reassign', '5  Reassign spots')]
+STUCK_AFTER = 180      # seconds in one 'waiting' message (a model load) after which the status line says it is probably stuck
 ALL_STEPS = ('read', 'segment', 'spots')         # the "Run 1-3" button: the automatic steps, one after the other
 
 
@@ -276,6 +277,8 @@ def pipeline_widget(ask=None):
 
     def _on_message(message):
         kind, key, *rest = message
+        if kind != 'waiting' and state.pop('waiting', None):     # the wait is over: back to the normal status line
+            status.native.setStyleSheet("")
         if kind == 'progress':
             done, total, text, seconds_left = rest
             units_left = max(total - done, 1)
@@ -283,7 +286,6 @@ def pipeline_widget(ask=None):
             _tick()
             step_status[key].value = text
         elif kind == 'status':
-            state.pop('waiting', None)
             status.value = rest[0]
         elif kind == 'waiting':                       # a long call without progress: show how long it has been
             state['waiting'] = (rest[0], time.time())
@@ -294,11 +296,19 @@ def pipeline_widget(ask=None):
         and show what buddy is doing right now (pipeline.progress_callback, set while a step runs)."""
         sub = state.get('substep')
         if sub and sub != state.get('substep_shown'):
+            if state.pop('waiting', None):
+                status.native.setStyleSheet("")
             status.value = sub
             state['substep_shown'] = sub
         if 'waiting' in state:
             text, since = state['waiting']
-            status.value = f"{text} ({format_seconds(time.time() - since)} so far)"
+            waited = time.time() - since
+            if waited > STUCK_AFTER:                  # a native call that never returns cannot be interrupted
+                status.value = (f"{text}: still waiting after {format_seconds(waited)} - this is probably stuck. "
+                                "Close napari, start it again and run the step on its own.")
+                status.native.setStyleSheet("color: #e05050;")
+            else:
+                status.value = f"{text} ({format_seconds(waited)} so far)"
         if 'progress' not in state:
             return
         done, total, expected, since = state['progress']
@@ -325,9 +335,26 @@ def pipeline_widget(ask=None):
             pass
         gc.collect()
 
+    def _warm_gpu():
+        """Create the CUDA context once, from the main thread, before any worker thread needs the GPU (see
+        _continue_chain); nothing happens without a GPU or with use_gpu false."""
+        if state.get('gpu_warm'):
+            return
+        state['gpu_warm'] = True
+        exp = state['exp']
+        if exp is None or not getattr(exp, 'use_gpu', True):
+            return
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.empty(1, device='cuda')
+        except Exception:                        # noqa: BLE001 - a GPU problem shows up in the step itself
+            pass
+
     def _start(key, generator_function, todo):
         from napari.qt.threading import thread_worker
         _free_viewer_memory()
+        _warm_gpu()
         _busy(True, key)
         progress.value = 0
         state.pop('progress', None)
@@ -405,8 +432,12 @@ def pipeline_widget(ask=None):
         _run_step(key)
 
     def _continue_chain():
+        # the next step is started from the event loop, not from inside the finished-callback of the previous
+        # worker: started there, its first CUDA call (creating the context while the previous QThread was still
+        # being torn down) hung on Windows; from a button click the same step always worked
         if state['chain'] and not state['stop']:
-            _run_step(state['chain'].pop(0))
+            from qtpy.QtCore import QTimer
+            QTimer.singleShot(200, lambda: _run_step(state['chain'].pop(0)))
         else:
             state['chain'] = []
 
@@ -459,23 +490,26 @@ def pipeline_widget(ask=None):
         yield _summary('read', 'Read', done, failed, len(todo), started)
 
     def _segment(todo):
+        # Omnipose runs in ONE worker process (buddy.parallel.segment_one), never in the napari process: on Windows
+        # its native code corrupted this process's memory, and the next GPU step (bud model, background filter)
+        # then hung or crashed napari. The worker loads the models once, segments every image and exits.
         from buddy import pipeline
+        from buddy.experiment import gpu_available
+        from buddy.parallel import iter_parallel, segment_one
         exp, started = state['exp'], time.time()
         prior = prior_seconds(_earlier(exp), pipeline.STEP_TIMES['segment'])
         estimate = Estimate({'segment': (len(todo), prior or DEFAULT_SECONDS['segment'])})
         yield ('progress', 'segment', 0, len(todo), f"Segment: {estimate.text()}", estimate.seconds_left())
-        # the bud model is loaded here, before Omnipose, and kept for step 3: loading it after Omnipose has used
-        # the GPU in this process can hang in the copy of the weights to the GPU (seen on Windows); in this
-        # order it never did. The first load after an install can take minutes (file scan, CUDA start-up).
-        if not hasattr(exp, 'bud_model') and exp.bud_classification['enabled']:
-            yield ('waiting', 'segment', "Segment: loading the bud model (minutes after a fresh install, seconds later)")
-            exp.init_bud_model()
-        if getattr(exp, 'cell_model', None) is None:
-            yield ('status', 'segment', "Segment: loading Omnipose...")
-            exp.init_omnipose()
-        yield ('status', 'segment', f"Segment: {len(todo)} image(s) on the {'GPU' if exp.use_GPU else 'CPU'}")
-        done, failed = yield from _serial('segment', 'segment', lambda f: pipeline.segment_image(f, exp),
-                                          todo, estimate, 'Segment')
+        device = 'GPU' if gpu_available(exp.use_gpu) else 'CPU'
+        yield ('waiting', 'segment', f"Segment: starting Omnipose in a worker process ({device})")
+        jobs = [(f, exp.cfg_file, exp.inputdir, exp.outputdir) for f in todo]
+        done = failed = 0
+        for job, result, error in iter_parallel(segment_one, jobs, 1, should_stop=lambda: state['stop']):
+            done, failed = done + (error is None), failed + (error is not None)
+            estimate.image_done('segment')
+            yield ('progress', 'segment', estimate.done, estimate.total, f"Segment: {estimate.text()}", estimate.seconds_left())
+            if error is not None:
+                yield ('status', 'segment', f"Segment: {Path(str(job[0])).parent.name} failed: {error!r}")
         yield _summary('segment', 'Segment', done, failed, len(todo), started)
 
     def _spots(todo):
@@ -499,6 +533,7 @@ def pipeline_widget(ask=None):
                 yield ('waiting', 'spots', "Spots: loading the bud model (minutes after a fresh install, seconds later)"
                        if exp.bud_classification['enabled'] else "Spots: running")
                 exp.init_bud_model()
+                yield ('status', 'spots', f"Spots: {len(todo)} image(s), {mode}")
                 estimate.restart_clock()
 
         def both(f):                       # 3a + 3b for one image

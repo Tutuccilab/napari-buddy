@@ -9,11 +9,22 @@
   **Omnipose** (`min_size` / `nuclei_min_size` and the switch *use the organism's preset*, buddy 0.6's `use_preset`:
   on, the cells / nuclei fields show the preset and are locked; off, they are editable and saved with
   `use_preset: false`). Each tab scrolls, so the panel fits on a small screen and with many channel rows.
-- *buddy pipeline*: the bud model is loaded at the start of step 2, before Omnipose, and kept for step 3. Loaded
-  after Omnipose had used the GPU in the same napari process, the copy of the weights to the GPU could hang on
-  Windows (the panel then sat at "loading the bud model" for good). While a model loads, the status line counts the
-  seconds, since the first load after an install can take minutes; after three minutes it says the load is probably
-  stuck and what to do (close napari, run the step on its own) - a native call that never returns cannot be stopped.
+- *Create config file* saves the complete layout of buddy's `config_example.json`: every block (the ones the panel has
+  no fields for with their defaults), in the same order, with the `_about` comment lines; before, only the panel's
+  own blocks were written and the rest was filled in silently when buddy read the file.
+- *buddy pipeline*: step 2 (Omnipose) runs in a worker process (`buddy.parallel.segment_one`, one process, the
+  models loaded once), not in the napari process. Done after a run on Windows in which napari crashed with a heap
+  corruption in the background filter of step 3 right after Omnipose had run in the napari process; whether
+  Omnipose's compiled code was the cause or the chained start below was, could not be told apart, so this stays
+  as a precaution: the napari process never runs that code and the models' GPU memory is freed when the worker
+  exits. Costs one model load (~10 s) per step-2 run. The notebooks are unchanged.
+- *Run 1-3*: the next step is started from the event loop, not from inside the previous worker's finished-callback,
+  and the CUDA context is created once from the main thread when the first step starts. A chained step's first
+  CUDA call (the bud model's weights copy) hung on Windows while the previous worker thread was still being torn
+  down; the same step started from its button always worked.
+- While a model loads, the status line counts the seconds (the first load after an install can take minutes); after
+  three minutes it says the load is probably stuck and what to do - a native call that never returns cannot be
+  stopped from Python.
 - The *bud masks* layer has fixed colours: bud red, mother faintly white, background transparent. The file keeps its
   values (1 = bud, 2 = background, 3 = mother); napari used to colour the background and the mothers like any label.
 - *Spot tuning* → Decompose has `alpha`, `beta`, `gamma` (were fixed at Big-FISH's 0.5, 2, 1, which stay the

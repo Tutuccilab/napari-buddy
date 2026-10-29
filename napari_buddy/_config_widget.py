@@ -128,18 +128,40 @@ def build_config(inputdir, outputdir, organism, patch_size, sigma, scale,
 
 
 def save_config(path, cfg):
-    """Write cfg to path as JSON (buddy's readable layout), forcing a .json suffix. Returns the Path."""
+    """
+    Write cfg to path as JSON, forcing a .json suffix. Returns the Path.
+    The file looks like buddy's config_example.json: every block written out (the ones the panel has no fields
+    for - cell_cycle, tiff_input, experiments - with their defaults), in the same order, with the example's
+    "_about" comment lines, so a config made here is self-explanatory when opened later.
+    """
     out = Path(str(path))
     if out.suffix.lower() != ".json":
         out = out.with_suffix(".json")
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
         from buddy.config import to_json
-        text = to_json(cfg)
+        text = to_json(full_layout(cfg))
     except ImportError:                                 # buddy < 0.6
         text = json.dumps(cfg, indent=2, ensure_ascii=False)
     with open(out, "w", encoding="utf-8") as f:
         f.write(text + "\n")
+    return out
+
+
+def full_layout(cfg):
+    """cfg (the blocks of build_config) completed with buddy's defaults and the comments of config_example.json."""
+    from buddy.config import example_config, file_layout, validate
+    example = example_config()
+    full = file_layout(validate(json.loads(json.dumps(cfg))))      # validate works on a copy: cfg stays as built
+    out = {k: v for k, v in example.items() if k.startswith("_")}  # the top-level comments first
+    out["_about"] = ("buddy config made with napari-buddy's Create config file: one block per step, every setting "
+                     "written out (explained in TUTORIAL.md, section 5)")
+    for key, value in full.items():
+        if isinstance(value, dict) and isinstance(example.get(key), dict):
+            comments = {k: v for k, v in example[key].items() if k.startswith("_")}
+            value = {**comments, **value}
+        out[key] = value
+    out["experiments"] = cfg.get("experiments", [])                # the example's strains are not this experiment's
     return out
 
 

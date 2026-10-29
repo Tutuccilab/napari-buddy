@@ -33,7 +33,9 @@ The plugin's widgets appear under **Plugins → Napari Buddy**:
   after the other. Starting a step closes the layers in napari to free memory. Steps run in the background with a
   progress bar and a time estimate (from earlier runs, then from this run); **Stop after this image** stops a
   step cleanly. Images already processed with the same settings are skipped; for images processed with other
-  settings a yes/no question lists what changed. Needs buddy installed in the same environment.
+  settings a yes/no question lists what changed. Needs buddy installed in the same environment. Steps 1 and 2 run
+  in worker processes (step 2 loads the Omnipose models once per run, ~10 s), so a run from napari is a little
+  slower than the same steps in `01_fish_bulk_processing.ipynb`, where the models stay loaded.
 - **Create config file** — build and save a buddy pipeline config (`.json`, one block per step), on three tabs:
   **General** (folders, channels, mask clean-up, GPU use, bud classification, re-run behaviour), **Spots** (`patch_size`,
   `sigma`, `scale`, `spot_radius` and the decomposition settings `alpha`, `beta`, `gamma`) and **Omnipose** (the
