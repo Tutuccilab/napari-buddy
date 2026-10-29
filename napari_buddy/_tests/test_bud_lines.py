@@ -4,7 +4,6 @@ The lines of the Buds tab (apply_drawn_lines) on small synthetic masks, with nap
 Layout (60 x 60 px): cell 1 on the left, cell 2 on the right, a painted bud (bud masks = 1) between them.
 """
 import numpy as np
-import pytest
 from napari.components import ViewerModel
 
 from napari_buddy._bud_links import BACKGROUND, BUD, MOTHER, bud_links
@@ -76,3 +75,12 @@ def test_two_unpainted_cells_merge_the_smaller_into_the_larger():
     assert "Merged 1 cell(s)" in msg
     assert (np.asarray(v.layers["DIC masks"].data)[BUD_PX] == 1).all()
     assert (np.asarray(v.layers["bud masks"].data)[BUD_PX] == BUD).all()
+
+
+def test_bud_mask_colormap_hides_background_and_paints_buds_red():
+    from napari_buddy._bud_links import bud_mask_colormap
+    cmap = bud_mask_colormap()
+    rgba = cmap.map(np.array([BACKGROUND, BUD, MOTHER, 0]))
+    assert rgba[0][3] == 0 and rgba[3][3] == 0                  # background (file value 2, or 0 after erasing): transparent
+    assert tuple(rgba[1][:3]) == (1.0, 0.0, 0.0) and rgba[1][3] == 1.0   # bud: red
+    assert 0 < rgba[2][3] < 0.5                                 # mother: faint

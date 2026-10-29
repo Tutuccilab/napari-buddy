@@ -5,14 +5,13 @@ It implements the Reader specification, but your plugin may choose to
 implement multiple readers or even other plugin contributions. see:
 https://napari.org/stable/plugins/guides.html?#readers
 """
+import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-import json
 from skimage import io
-from pathlib import Path
-from skimage import io
-from textwrap import dedent
-from napari.utils.notifications import show_info
+
 
 def napari_get_reader(path):
     """A basic implementation of a Reader contribution.
@@ -79,7 +78,6 @@ def reader_function(path):
     # return [(data, add_kwargs, layer_type)]
 
     layer_tuples = read_smfish_json(path)
-    pass
     return layer_tuples
 
 # Layer groups (see _layer_groups.py). The reader adds the layers group by group, from the bottom
@@ -100,13 +98,13 @@ def bud_layer_data(base, cell_mask=None):
                           unbudded cells with high ASH1/CLB2 (cell_flags.csv: late M / early S)
     Missing files are skipped.
     """
-    from ._bud_links import links_layer_data
+    from ._bud_links import bud_mask_colormap, links_layer_data
     base = Path(base)
     tuples = []
     bud_file = base / 'corrected' / 'bud_corrected_masks.tif'
     if bud_file.exists():
         bud_masks = io.imread(bud_file)
-        tuples.append((bud_masks, {'name': 'bud masks', 'opacity': 0.5, 'visible': True,
+        tuples.append((bud_masks, {'name': 'bud masks', 'opacity': 0.7, 'visible': True, 'colormap': bud_mask_colormap(),
                                    'metadata': {'group': 'masks'}}, 'labels'))
         if cell_mask is not None:
             tuples.append(links_layer_data(cell_mask, bud_masks))
@@ -290,7 +288,7 @@ def read_smfish_json(path, max_project=False):
           'add_kwargs': { 'name': "DAPI masks", 'visible': False, 'blending': 'additive', 'opacity': 0.2 } },
     ]
 
-    with open(path, "r") as f:
+    with open(path) as f:
         img = json.load(f)
         # a real fluorescence channel has a 'colormap' in its results entry;
         # skip non-channel keys such as 'alignment' that align() adds to results.

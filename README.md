@@ -16,8 +16,8 @@ macOS / Linux, with this repo next to the buddy repo). How to install, GPU set-u
 [buddy/INSTALL.md](https://github.com/Tutuccilab/buddy/blob/main/INSTALL.md). To install only the plugin into an
 existing buddy environment: `python -m pip install -e .` from this folder.
 
-**Versions:** napari-buddy 0.3.x works with buddy 0.3.0 up to 0.5.x. Both packages warn when the other one is too
-old or too new; update both with `git pull` and `python -m pip install -e .` in each repo.
+**Versions:** napari-buddy 0.4.x needs buddy 0.6.x (0.3.x worked with buddy 0.3.0 up to 0.5.x). Both packages warn
+when the other one is too old or too new; update both with `git pull` and `python -m pip install -e .` in each repo.
 
 ## Usage
 
@@ -34,12 +34,13 @@ The plugin's widgets appear under **Plugins → Napari Buddy**:
   progress bar and a time estimate (from earlier runs, then from this run); **Stop after this image** stops a
   step cleanly. Images already processed with the same settings are skipped; for images processed with other
   settings a yes/no question lists what changed. Needs buddy installed in the same environment.
-- **Create config file** — build and save a buddy pipeline config (`.json`, one block per step): the **General**
-  tab holds the folders, channels, spot settings, mask clean-up, GPU use, bud classification and re-run behaviour,
-  the **Omnipose** tab the segmentation networks and their settings.
+- **Create config file** — build and save a buddy pipeline config (`.json`, one block per step), on three tabs:
+  **General** (folders, channels, mask clean-up, GPU use, bud classification, re-run behaviour), **Spots** (`patch_size`,
+  `sigma`, `scale`, `spot_radius` and the decomposition settings `alpha`, `beta`, `gamma`) and **Omnipose** (the
+  segmentation networks and their settings; *use the organism's preset* on = buddy's preset, off = tune them).
 - **Read in VSI file** — load a raw VSI image (DIC + channels) into napari.
-- **Filter / Detect / Threshold / Decompose spots** — tune spot-detection
-  parameters interactively before running batch detection in buddy.
+- **Filter / Detect / Threshold / Decompose spots** — tune spot-detection parameters interactively before running
+  batch detection in buddy (Decompose has `alpha`, `beta`, `gamma`, the config's `spots.decomposition`).
 - **Open data** — load a buddy result (`img.json`) as layers, grouped from bottom to top: DIC + DAPI,
   raw channels, filtered channels, spots, masks (cell, nucleus and bud masks, a `bud → mother links`
   layer with a line from each bud to its mother, and the `check these buds` boxes of the bud model) and, with

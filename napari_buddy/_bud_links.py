@@ -15,15 +15,27 @@ touching buds of different mothers stay separate.
 Light module (numpy + skimage); napari is only used through the viewer passed in.
 """
 import numpy as np
-from skimage.measure import regionprops, label as cc_label
+from skimage.measure import label as cc_label
+from skimage.measure import regionprops
 
 try:     # the bud-mask values are defined once, in buddy (shared with its bud model)
     from buddy.buds.bud_tools import BACKGROUND, BUD, MOTHER
 except ImportError:                                     # buddy 0.1.0
-    from buddy.bud_tools import BG as BACKGROUND, BUD, MOTHER
+    from buddy.bud_tools import BUD
 
 LINKS_LAYER = "bud → mother links"
 BUD_VALUE = BUD
+
+
+def bud_mask_colormap():
+    """
+    Fixed colours for the 'bud masks' layer: bud red, mother a faint white, background (value 2 in the file, or 0
+    after the eraser) transparent. Without it napari colours the background and the mothers like any other label.
+    """
+    from napari.utils.colormaps import DirectLabelColormap
+    return DirectLabelColormap(color_dict={BUD: (1.0, 0.0, 0.0, 1.0), MOTHER: (1.0, 1.0, 1.0, 0.25),
+                                           BACKGROUND: (0.0, 0.0, 0.0, 0.0), 0: (0.0, 0.0, 0.0, 0.0),
+                                           None: (0.0, 0.0, 0.0, 0.0)})
 LINK_COLOUR = "red"
 ORPHAN_COLOUR = "white"
 

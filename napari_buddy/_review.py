@@ -25,7 +25,10 @@ from pathlib import Path
 
 import numpy as np
 
-from ._bud_links import BUD  # bud-mask value, defined once in buddy
+from ._bud_links import (  # bud-mask value, defined once in buddy
+    BUD,
+    bud_mask_colormap,
+)
 
 _DOCKED = {}    # (id(viewer), panel name) -> dock widget, so each panel is added to a viewer only once
 _PANELS = {}    # id(viewer) -> the Correct images panel
@@ -200,7 +203,7 @@ def _seed_bud_layer(viewer, savepath):
         viewer.layers.remove(viewer.layers['bud masks'])
     group = {'group': 'masks'}
     viewer.add_labels(build_bud_seed(cell_masks, info['bud_labels'], keep_bud_mask=earlier),
-                      name='bud masks', opacity=0.5, metadata=group)
+                      name='bud masks', opacity=0.7, colormap=bud_mask_colormap(), metadata=group)
     for labels, name, shape, colour in ((info['bud_labels'], 'potential buds', 'rectangle', 'yellow'),
                                         (info['budded_labels'], 'potentially budded', 'ellipse', 'cyan')):
         rects = candidate_rectangles(info['props'], labels)

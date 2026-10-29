@@ -9,6 +9,8 @@
   **Omnipose** (`min_size` / `nuclei_min_size` and the switch *use the organism's preset*, buddy 0.6's `use_preset`:
   on, the cells / nuclei fields show the preset and are locked; off, they are editable and saved with
   `use_preset: false`). Each tab scrolls, so the panel fits on a small screen and with many channel rows.
+- The *bud masks* layer has fixed colours: bud red, mother faintly white, background transparent. The file keeps its
+  values (1 = bud, 2 = background, 3 = mother); napari used to colour the background and the mothers like any label.
 - *Spot tuning* → Decompose has `alpha`, `beta`, `gamma` (were fixed at Big-FISH's 0.5, 2, 1, which stay the
   defaults); the values used are in the decomposed layer's metadata.
 - *Spot tuning* → Detect: the "LoG filtered" and "local maxima" layers are added hidden (they are only kept for
