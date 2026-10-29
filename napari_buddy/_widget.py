@@ -8,11 +8,11 @@ from typing import List
 
 import napari
 from bigfish import detection, stack
+from buddy.config import DECOMPOSITION_DEFAULTS
 from buddy.experiment import Experiment
 from buddy.image import Image
-from magicgui import magic_factory
-
 from buddy.spots import gpu_detection as gpu_spots
+from magicgui import magic_factory
 
 
 def _on_gpu(gpu, cpu):
@@ -220,21 +220,26 @@ def _border_cycle(features):
 
 
 @magic_factory(
-    auto_call=False
+    auto_call=False,
+    alpha={"min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "intensity of one molecule as a fraction of the reference spot; lower = more molecules per dense region"},
+    beta={"min": 0.0, "max": 100.0, "step": 0.5, "tooltip": "a dense region must be at least beta x the reference spot; lower = more regions"},
+    gamma={"min": 0.0, "max": 10.0, "step": 0.5, "tooltip": "width of the denoising filter before the regions are found (x spot radius)"},
 )
 def spot_decomposition_magic_widget(
     viewer: "napari.Viewer",
     point_layer: "napari.layers.Points",
+    alpha: float = DECOMPOSITION_DEFAULTS["alpha"],
+    beta: float = DECOMPOSITION_DEFAULTS["beta"],
+    gamma: float = DECOMPOSITION_DEFAULTS["gamma"],
 ) -> List[napari.types.LayerDataTuple]:
+    """Big-FISH decompose_dense on a spots layer; alpha / beta / gamma are the "decomposition" settings of the config's "spots" block."""
     spots = point_layer.data
     metadata = dict(point_layer.metadata)           # a copy: the layers must not share one dict
     channel = metadata['channel']
 
     rna = viewer.layers[f'{channel}'].data
 
-    settings = dict(alpha=0.5,  # alpha impacts the number of spots per candidate region
-                    beta=2,     # beta impacts the number of candidate regions to decompose
-                    gamma=1)    # gamma the filtering step to denoise the image
+    settings = dict(alpha=alpha, beta=beta, gamma=gamma)
     decomp_spots, dense_regions, reference_spot = _on_gpu(
         lambda device: gpu_spots.decompose_dense(rna, spots, metadata['scale'], metadata['spot_radius'],
                                                    device=device, **settings),
@@ -250,7 +255,7 @@ def spot_decomposition_magic_widget(
         cell_masks = viewer.layers['DIC masks'].data
         features['label'], features['in_cell'] = get_labels(cell_masks, decomp_spots)
 
-    metadata.update({ 'decomposed': 1 })
+    metadata.update({'decomposed': 1, 'decomposition': settings})
 
     regions = pd.DataFrame(dense_regions[:, 3:5], columns=['nb_rna', 'area'])
     return [

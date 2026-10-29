@@ -3,11 +3,14 @@
 ## 0.4.0 (2026-10-29)
 - Writes buddy 0.6's config layout: one block per step (`channels`, `segmentation`, `spots`, `hardware`, ...) instead
   of the `"parameters"` grab-bag, saved in buddy's readable format (`buddy.config.to_json`). Needs buddy >= 0.6.
-- *Create config file*: the tabs are **General** and **Omnipose** (no longer "Config" inside "Config"); the Omnipose
-  tab also has `min_size` / `nuclei_min_size` and the switch *use the organism's preset* (buddy 0.6's `use_preset`:
+- *Create config file*: three tabs instead of "Config" inside "Config" - **General** (folders, organism, channels,
+  clean-up, GPU, bud model, `if_already_processed`), **Spots** (`patch_size`, `sigma`, `scale`, `spot_radius` and
+  the decomposition settings `alpha`, `beta`, `gamma`: `spots.decomposition`, the same for every channel) and
+  **Omnipose** (`min_size` / `nuclei_min_size` and the switch *use the organism's preset*, buddy 0.6's `use_preset`:
   on, the cells / nuclei fields show the preset and are locked; off, they are editable and saved with
-  `use_preset: false`). General has the decomposition settings `alpha`, `beta`, `gamma` (`spots.decomposition`,
-  the same for every channel).
+  `use_preset: false`). Each tab scrolls, so the panel fits on a small screen and with many channel rows.
+- *Spot tuning* → Decompose has `alpha`, `beta`, `gamma` (were fixed at Big-FISH's 0.5, 2, 1, which stay the
+  defaults); the values used are in the decomposed layer's metadata.
 - *Spot tuning* → Detect: the "LoG filtered" and "local maxima" layers are added hidden (they are only kept for
   Threshold, which re-thresholds them without recomputing); the spots layer is what you see.
 - *Spot tuning* → Decompose: the dense regions are 3D points (on their z plane, like the spots) drawn as cyan

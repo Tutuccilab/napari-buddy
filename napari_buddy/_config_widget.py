@@ -163,7 +163,7 @@ def config_widget():
                      "beta": FloatSpinBox(label="beta: dense region >= beta x reference spot", value=2, min=0, max=100, step=0.5),
                      "gamma": FloatSpinBox(label="gamma: denoising filter width (x spot radius)", value=1, min=0, max=10, step=0.5)}
 
-    header = Label(value="Channels (in order of acquisition):  mRNA | filter | colormap | threshold (blank = None)")
+    header = Label(value="Channels (in order of acquisition):  mRNA | filter | colormap | threshold (blank = automatic)")
     channels_box = Container(layout="vertical", labels=False)
     rows = []  # list of dicts holding each row's widgets
 
@@ -254,9 +254,7 @@ def config_widget():
     main = Container(
         widgets=[
             inputdir, outputdir, organism,
-            patch_size, sigma, scale, spot_radius,
             header, channels_box, add_btn,
-            Label(value="Decomposition of dense regions (step 3, all channels)"), *decomposition.values(),
             Label(value="Mask clean-up (step 2)"), min_cell_area, expand_px, remove_edge,
             Label(value="GPU"), use_gpu, gpu_spots,
             Label(value="Bud classification"), bud_enabled, bud_model, ash_channel,
@@ -264,21 +262,42 @@ def config_widget():
         ],
         layout="vertical",
     )
+    spots_tab = Container(
+        widgets=[Label(value="Spot detection (step 3) - the \"spots\" block of the config file"),
+                 patch_size, sigma, scale, spot_radius,
+                 Label(value="Decomposition of dense regions (the same for every channel)"), *decomposition.values(),
+                 Label(value="Find sigma, scale, spot_radius and the thresholds with Plugins > Napari Buddy > Spot tuning.")],
+        layout="vertical")
     bottom = Container(widgets=[save_path, save_btn, status], layout="vertical")
 
-    # two tabs (General: everything but Omnipose; Omnipose) above one save row, so the panel stays short
+    # three tabs (General; Spots = the "spots" block; Omnipose = the Omnipose part of "segmentation") above one save
+    # row; each tab scrolls, so the panel fits on a small screen and with many channel rows
     from qtpy.QtWidgets import QTabWidget, QVBoxLayout, QWidget
     tabs = QTabWidget()
-    from ._tabs import _packed
-    tabs.addTab(_packed(main.native), "General")
-    tabs.addTab(_packed(omni.container.native), "Omnipose")
+    tabs.addTab(_scrolled(main.native), "General")
+    tabs.addTab(_scrolled(spots_tab.native), "Spots")
+    tabs.addTab(_scrolled(omni.container.native), "Omnipose")
     panel = QWidget()
     layout = QVBoxLayout(panel)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.addWidget(tabs)
     layout.addWidget(bottom.native)
-    panel._magicgui = (main, omni.container, bottom)      # keep the magicgui widgets alive
+    panel._magicgui = (main, spots_tab, omni.container, bottom)      # keep the magicgui widgets alive
     return panel
+
+
+def _scrolled(native):
+    """A tab page with a vertical scroll bar: the widget at the top, scrolling when taller than the dock."""
+    from qtpy.QtCore import Qt
+    from qtpy.QtWidgets import QScrollArea
+
+    from ._tabs import _packed
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setFrameShape(QScrollArea.NoFrame)
+    area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    area.setWidget(_packed(native))
+    return area
 
 
 class _omnipose_tab:
